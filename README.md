@@ -27,11 +27,10 @@ Learning Maps - try to imagine that you are Dora!
 
 - Audio Agents
   - [GPT-4 Turbo with Audio](https://openai.com/gpt-4-turbo/)
-  - [FunAudioLLM](https://github.com/FunAudioLLM)
+  - [FunAudioLLM](https://github.com/FunAudioLLM)<br><br>
 
 
 
 
 
-By Yiru
 April 2025, Zürich,🇨🇭
