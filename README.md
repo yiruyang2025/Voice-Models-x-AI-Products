@@ -1,9 +1,8 @@
-# VoiceModels-25
+# SpeechProcessing-25
 
-For disabled people
+For disabled people.
 
-
-Learning Maps - try to imagine that you are Dora!
+Learning Maps - try to imagine that you are Dora explring the Model Forest.
 
 # Models
 
