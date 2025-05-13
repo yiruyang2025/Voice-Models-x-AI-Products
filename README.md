@@ -2,7 +2,7 @@
 
 For disabled people.
 
-Learning Maps - try to imagine that you are Dora explring the Model Forest.
+Learning Maps - try to imagine that you are Dora exploring the Model Forest.
 
 # Models
 
