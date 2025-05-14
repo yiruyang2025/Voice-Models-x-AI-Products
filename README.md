@@ -32,11 +32,13 @@ Learning Maps - try to imagine that you are Dora exploring the Model Forest.
 
 # Citation
 
-@article{xxx,
-  title={Adapter-Only Distillation for Hearing Aid ASR
-},
-  author={Yiru Yang, xxx},
-  journal={arXiv preprint arXiv:xxx},
+```bib
+@article{yiruyang2025,
+  title={Adapter-Only Distillation for Hearing Aid ASR},
+  author={Yiru Yang, xxxx},
+  journal={arXiv preprint arXiv:2506.xxxxx},
   year={2025}
 }
+```
+![image](https://github.com/user-attachments/assets/ba7716c2-78ed-4a59-953c-2f78c3659dd9)
 
