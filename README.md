@@ -30,6 +30,13 @@ Learning Maps - try to imagine that you are Dora exploring the Model Forest.
 
 
 
+# Citation
 
+@article{xxx,
+  title={Adapter-Only Distillation for Hearing Aid ASR
+},
+  author={Yiru Yang, xxx},
+  journal={arXiv preprint arXiv:xxx},
+  year={2025}
+}
 
-April 2025, Zürich,🇨🇭
