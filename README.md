@@ -2,26 +2,28 @@
 
 For Edge AI
 
+<br><br>
 
-
-# Training adapters
-
-xxxx:
-```bash
-python -xxxx
-```
-
-
-# Sampling with adapters
+## Training adapters
 
 xxxx:
 ```bash
 python -xxxx
 ```
 
+<br><br>
+
+## Sampling with adapters
+
+xxxx:
+```bash
+python -xxxx
+```
+
+<br><br>
 
 
-# Citation
+## Citation
 
 ```bib
 @article{yiruyang2025,
@@ -31,3 +33,5 @@ python -xxxx
   year={2025}
 }
 ```
+
+<br><br>
