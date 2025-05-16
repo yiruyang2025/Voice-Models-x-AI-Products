@@ -78,17 +78,27 @@ EXAMPLE_DIR = f"{REPO_DIR}/examples/pytorch/speech-pretraining"
 
 # ---------------- directories on Google Drive ----------------
 DATA_DIR  = Path(f"{PROJ}/data/librispeech_full")     # Arrow sets
-CACHE_DIR = Path(f"{PROJ}/cache/hf_datasets")         # HF download & extract
+# CACHE_DIR = Path(f"{PROJ}/cache/hf_datasets")         # HF download & extract # <-- Remove or comment out this line
 TMP_DIR   = Path(f"{PROJ}/cache/tmp")                 # temp for tar extraction
 
-for d in (DATA_DIR, CACHE_DIR, TMP_DIR):
+for d in (DATA_DIR, TMP_DIR): # <-- Removed CACHE_DIR from this loop
     d.mkdir(parents=True, exist_ok=True)
 
-# route every cache & temp path to Drive
-os.environ["HF_HOME"]            = str(CACHE_DIR)
-os.environ["HF_DATASETS_CACHE"]  = str(CACHE_DIR)
-os.environ["TRANSFORMERS_CACHE"] = str(CACHE_DIR)
-os.environ["TMPDIR"]             = str(TMP_DIR)
+# Create a temporary cache directory within the Colab environment's local filesystem
+LOCAL_CACHE_DIR = Path("/tmp/hf_datasets_local_cache")
+LOCAL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+# route temp path to Drive
+# os.environ["HF_HOME"]            = str(CACHE_DIR) # <-- Remove or comment out this line
+# os.environ["HF_DATASETS_CACHE"]  = str(CACHE_DIR) # <-- Remove or comment out this line
+# os.environ["TRANSFORMERS_CACHE"] = str(CACHE_DIR) # <-- Remove or comment out this line
+
+# Set HF cache to the local temporary directory for downloading
+os.environ["HF_HOME"]            = str(LOCAL_CACHE_DIR)
+os.environ["HF_DATASETS_CACHE"]  = str(LOCAL_CACHE_DIR)
+os.environ["TRANSFORMERS_CACHE"] = str(LOCAL_CACHE_DIR)
+
+os.environ["TMPDIR"]             = str(TMP_DIR) # Keep TMPDIR on Drive if needed for large temp files during processing
 
 disable_caching()   # rely solely on explicit dirs above
 
@@ -106,15 +116,17 @@ for local_name, hf_split in splits.items():
     t0 = time.time()
     print(f"\n▶  preparing split: {local_name}")
 
+    # Download the dataset to the local temporary cache directory
     ds = load_dataset(
         "librispeech_asr",
         "clean",                 # builder config
         split=hf_split,
-        cache_dir=CACHE_DIR,
-        streaming=False          # full download to Drive
+        cache_dir=LOCAL_CACHE_DIR, # Use the local temporary cache directory
+        streaming=False          # full download to local temp
     ).cast_column("audio", Audio(sampling_rate=16_000))
 
     out_path = DATA_DIR / local_name
+    # Save the processed dataset to the desired location on Google Drive
     ds.save_to_disk(out_path)
     print(f"✓ saved  {out_path}   rows={len(ds):,}   time={time.time()-t0:.1f}s")
 
