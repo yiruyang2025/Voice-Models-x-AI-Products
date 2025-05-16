@@ -1,6 +1,6 @@
 # SpeechProcessing-25
 
-For Edge AI
+For Edge AI, with NVIDIA A100 Tensor Core GPU
 
 <br><br>
 
