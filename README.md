@@ -63,74 +63,57 @@ echo "Repo cloned at $repo_dir"
 
 ```bash
 # ===== 3. Prepare LibriSpeech data (train-clean-100) =====
-# Run this cell after section 2 (repo cloned)
+# prerequisites: Sections 1–2 executed
 
-import os, time
+import os, time, shutil
 from pathlib import Path
-from datasets import load_dataset, Audio, disable_caching
+from datasets import load_dataset, disable_caching, Audio
 
+# project root on Drive (same path you used before)
 PROJ = "/content/drive/MyDrive/hearing_asr_dqlora"
-REPO_DIR = f"{PROJ}/transformers"                     #  <-- 与板块2保持一致
-EXAMPLE_DIR = f"{REPO_DIR}/examples/pytorch/speech-pretraining"
+DATA_DIR   = Path(f"{PROJ}/data/librispeech_100")    # final Arrow files (Drive)
+TMP_CACHE  = Path("/tmp/hf_cache")                   # local cache, auto-cleared
 
-# cd into example folder
-%cd "$EXAMPLE_DIR"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+TMP_CACHE.mkdir(parents=True, exist_ok=True)
 
-# ---------------- directories on Google Drive ----------------
-DATA_DIR  = Path(f"{PROJ}/data/librispeech_full")     # Arrow sets
-# CACHE_DIR = Path(f"{PROJ}/cache/hf_datasets")         # HF download & extract # <-- Remove or comment out this line
-TMP_DIR   = Path(f"{PROJ}/cache/tmp")                 # temp for tar extraction
+# point HF caches to /tmp (fast, avoids Drive-FUSE limitation)
+os.environ["HF_HOME"]            = str(TMP_CACHE)
+os.environ["HF_DATASETS_CACHE"]  = str(TMP_CACHE)
+os.environ["TRANSFORMERS_CACHE"] = str(TMP_CACHE)
 
-for d in (DATA_DIR, TMP_DIR): # <-- Removed CACHE_DIR from this loop
-    d.mkdir(parents=True, exist_ok=True)
-
-# Create a temporary cache directory within the Colab environment's local filesystem
-LOCAL_CACHE_DIR = Path("/tmp/hf_datasets_local_cache")
-LOCAL_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
-# route temp path to Drive
-# os.environ["HF_HOME"]            = str(CACHE_DIR) # <-- Remove or comment out this line
-# os.environ["HF_DATASETS_CACHE"]  = str(CACHE_DIR) # <-- Remove or comment out this line
-# os.environ["TRANSFORMERS_CACHE"] = str(CACHE_DIR) # <-- Remove or comment out this line
-
-# Set HF cache to the local temporary directory for downloading
-os.environ["HF_HOME"]            = str(LOCAL_CACHE_DIR)
-os.environ["HF_DATASETS_CACHE"]  = str(LOCAL_CACHE_DIR)
-os.environ["TRANSFORMERS_CACHE"] = str(LOCAL_CACHE_DIR)
-
-os.environ["TMPDIR"]             = str(TMP_DIR) # Keep TMPDIR on Drive if needed for large temp files during processing
-
-disable_caching()   # rely solely on explicit dirs above
-
-print("HF_HOME =", os.environ['HF_HOME'])
-print("TMPDIR  =", os.environ['TMPDIR'])
-print("Downloading LibriSpeech splits: train.clean.100 / validation.clean / test.clean")
+disable_caching()  # always use cache_dir parameter
+print("HF cache   :", TMP_CACHE)
+print("Arrow data :", DATA_DIR)
 
 splits = {
-    "train.100":  "train.clean.100",
+    "train.100" : "train.clean.100",
     "validation": "validation.clean",
-    "test":       "test.clean"
+    "test"      : "test.clean"
 }
 
-for local_name, hf_split in splits.items():
+for name, hf_split in splits.items():
     t0 = time.time()
-    print(f"\n▶  preparing split: {local_name}")
+    print(f"\n▶ preparing split {name}")
 
-    # Download the dataset to the local temporary cache directory
-    ds = load_dataset(
-        "librispeech_asr",
-        "clean",                 # builder config
-        split=hf_split,
-        cache_dir=LOCAL_CACHE_DIR, # Use the local temporary cache directory
-        streaming=False          # full download to local temp
-    ).cast_column("audio", Audio(sampling_rate=16_000))
+    ds = (
+        load_dataset(
+            "librispeech_asr",
+            "clean",
+            split=hf_split,
+            cache_dir=TMP_CACHE,
+            streaming=False           # download fully to /tmp
+        )
+        .cast_column("audio", Audio(sampling_rate=16_000))
+    )
 
-    out_path = DATA_DIR / local_name
-    # Save the processed dataset to the desired location on Google Drive
-    ds.save_to_disk(out_path)
-    print(f"✓ saved  {out_path}   rows={len(ds):,}   time={time.time()-t0:.1f}s")
+    out_path = DATA_DIR / name
+    ds.save_to_disk(out_path)         # write Arrow files to Drive
+    print(f"✓ saved → {out_path} | rows={len(ds):,} | {time.time()-t0:.1f}s")
 
-print("\nLibriSpeech ready →", DATA_DIR)
+# remove /tmp cache to free Colab disk
+shutil.rmtree(TMP_CACHE, ignore_errors=True)
+print("\nLibriSpeech ready at", DATA_DIR)
 ```
 
 <br><br>
