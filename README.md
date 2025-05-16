@@ -218,6 +218,46 @@ python transcribe.py \
 
 
 
+## 9. Others - If needed
+
+```bash
+# ===== 0. Clean Google-Drive artefacts (datasets, cache, models) =====
+# Run ONLY if you are sure you want to free all space taken by prior runs
+
+from google.colab import drive
+import shutil, os, textwrap, pathlib, time
+
+drive.mount("/content/drive")             # 1) mount Drive
+
+PROJ   = "/content/drive/MyDrive/hearing_asr_dqlora"
+TARGETS = [
+    f"{PROJ}/data",     # LibriSpeech Arrow files
+    f"{PROJ}/cache",    # Hugging-Face download / extract cache
+    f"{PROJ}/models"    # teacher / student checkpoints
+]
+
+print("\nFolders scheduled for removal:\n")
+for p in TARGETS:
+    print("  •", p)
+
+# 2) one last confirmation
+resp = input("\nType DELETE (all caps) to remove everything above: ")
+if resp.strip() == "DELETE":
+    t0 = time.time()
+    for p in TARGETS:
+        if os.path.exists(p):
+            print(f"→ deleting {p} …", end="", flush=True)
+            shutil.rmtree(p)
+            print(" done")
+        else:
+            print(f"→ {p} not found – skipped")
+    print(f"\n✓ clean-up finished  ({time.time()-t0:.1f}s)")
+else:
+    print("Aborted – nothing was deleted.")
+```
+
+<br><br><br><br>
+
 
 ## Citation
 
