@@ -80,30 +80,44 @@ echo "Hugging Face cache directory: $HF_HOME"
 <br>
 
 ```bash
-# ===== 2-A. Upgrade torch to compatible version =====
-!pip install -q --upgrade torch
+%%bash
+# 2-A. Align PyTorch, torchvision and torchaudio to Colab’s 2.6.x stack
+pip uninstall -y torch torchvision torchaudio fastai
+pip install -q torch==2.6.0+cu124 torchvision==0.21.0+cu124 torchaudio==2.6.0+cu124 \
+    --extra-index-url https://download.pytorch.org/whl/cu124
+```
 
-# ===== 2-B. Pretrained model – facebook/wav2vec2-large-960h-lv60-self =====
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Tokenizer
+<br><br>
+
+
+```bash
+%%bash
+set -euxo pipefail
+export TORCHDYNAMO_DISABLE=1
+
+# 2-B
+
+python3 - << 'EOF'
 import os
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
-# 1) Define project root and teacher output directory
 PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
 TEACHER_DIR = os.path.join(PROJECT_ROOT, "models", "teacher")
 os.makedirs(TEACHER_DIR, exist_ok=True)
 
-# 2) Specify pretrained model ID
 MODEL_ID = "facebook/wav2vec2-large-960h-lv60-self"
 
-# 3) Load model and tokenizer from Hugging Face Hub
+# 1) Load model
 model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
-tokenizer = Wav2Vec2Tokenizer.from_pretrained(MODEL_ID)
+# 2) Load processor (including tokenizer + feature_extractor)
+processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
 
-# 4) Save to Google Drive
+# 3) Save
 model.save_pretrained(TEACHER_DIR)
-tokenizer.save_pretrained(TEACHER_DIR)
+processor.save_pretrained(TEACHER_DIR)
 
-print(f"Pretrained model and tokenizer saved to {TEACHER_DIR}")
+print(f"Saved pretrained model and processor to {TEACHER_DIR}")
+EOF
 ```
 
 <br><br>
