@@ -14,6 +14,7 @@
 
 <br>
 
+```bash
 @inproceedings{baevski2020wav2vec,
   title        = {wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations},
   author       = {Baevski, Alexei and Zhou, Henry and Mohamed, Abdelrahman and Auli, Michael},
@@ -21,7 +22,7 @@
   year         = {2020},
   url          = {https://arxiv.org/abs/2006.11477}
 }
-
+```
 
 <br>
 
