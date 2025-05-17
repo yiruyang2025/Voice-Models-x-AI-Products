@@ -1,8 +1,10 @@
 # SpeechProcessing-25
 
+<br>
+
 - For Edge AI, with NVIDIA A100 Tensor Core GPU
 
-<br><br>
+<br>
 
 # Option 1 - [facebook/wav2vec2-large-960h-lv60-self](https://huggingface.co/facebook/wav2vec2-large-960h-lv60-self) by API
 
