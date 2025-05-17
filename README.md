@@ -155,45 +155,63 @@ print("✔ Download and extraction to Google Drive completed.")
 
 ```bash
 %%bash
-# ===== 3B. Convert to Arrow format and save to Google Drive =====
+# ===== 3B. Convert to Arrow format with inline progress bars and save to Google Drive =====
 set -euxo pipefail
 
 export PROJECT_ROOT="/content/drive/MyDrive/hearing_asr_dqlora"
 export HF_HOME="${PROJECT_ROOT}/cache/hf"
+```
 
-python3 - << 'EOF'
-import os
+<br><br>
+
+
+```bash
+# Convert LibriSpeech splits to Arrow format with live progress bars in Colab
+
 from datasets import load_dataset, Audio
+from tqdm.notebook import tqdm
+import os
 
-# read env vars
-project_root = os.environ["PROJECT_ROOT"]
-cache_dir    = os.environ["HF_HOME"]
-arrow_dir    = os.path.join(project_root, "data", "librispeech_arrow")
-os.makedirs(arrow_dir, exist_ok=True)
+# 1) Define paths
+PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
+HF_CACHE     = os.path.join(PROJECT_ROOT, "cache", "hf")
+ARROW_DIR    = os.path.join(PROJECT_ROOT, "data", "librispeech_arrow")
+os.makedirs(ARROW_DIR, exist_ok=True)
 
-# mapping of HF splits to folder names
+# 2) Map Hugging Face splits to folder names
 splits = {
-    "train.100" : "train100",
+    "train.100":  "train100",
     "validation": "validation",
-    "test"      : "test"
+    "test":       "test"
 }
 
-# build and save each split
-for hf_split, name in splits.items():
-    out_path = os.path.join(arrow_dir, name)
+# 3) Process each split with an outer tqdm
+for hf_split, folder in tqdm(splits.items(), desc="Overall splits", unit="split"):
+    out_path = os.path.join(ARROW_DIR, folder)
     if os.path.isdir(out_path):
-        print(f"→ Skip {name}, already exists.")
+        tqdm.write(f"→ Skipping {folder}, already exists.")
         continue
-    print(f"→ Processing split '{hf_split}' → '{name}'")
+
+    tqdm.write(f"→ Loading split '{hf_split}' → '{folder}'")
     ds = load_dataset(
         "librispeech_asr",
         "clean",
         split=hf_split,
-        cache_dir=cache_dir
-    ).cast_column("audio", Audio(sampling_rate=16000))
+        cache_dir=HF_CACHE
+    ).cast_column("audio", Audio(sampling_rate=16_000))
+
+    # 4) Use inner tqdm via ds.map to force iteration
+    ds = ds.map(
+        lambda batch: batch,
+        batched=True,
+        batch_size=500,
+        desc=f"Converting {folder}",
+        disable=False
+    )
+
+    # 5) Save Arrow dataset
     ds.save_to_disk(out_path)
-    print(f"✔ Saved '{name}' with {len(ds)} examples to {out_path}")
-EOF
+    tqdm.write(f"✔ Saved '{folder}' with {len(ds)} examples to {out_path}")
 ```
 
 <br><br>
