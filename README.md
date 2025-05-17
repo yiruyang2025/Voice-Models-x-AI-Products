@@ -12,6 +12,10 @@
 
 - [2020 - wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations](https://arxiv.org/abs/2006.11477)
 
+<br>
+
+- **wav2vec2-large-960h-lv60-self** is based on the above papaer, 60k hours of unlabeled Libri-Light data were used for self-supervised pre-training and fine-tuned on LibriSpeech 960h<br>
+
 <br><br>
 
 ## 1. Setup Colab & Google Drive
