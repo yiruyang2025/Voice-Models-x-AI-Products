@@ -14,6 +14,17 @@
 
 <br>
 
+@inproceedings{baevski2020wav2vec,
+  title        = {wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations},
+  author       = {Baevski, Alexei and Zhou, Henry and Mohamed, Abdelrahman and Auli, Michael},
+  booktitle    = {Advances in Neural Information Processing Systems (NeurIPS)},
+  year         = {2020},
+  url          = {https://arxiv.org/abs/2006.11477}
+}
+
+
+<br>
+
 - **wav2vec2-large-960h-lv60-self** is based on the above papaer, 60k hours of unlabeled Libri-Light data were used for self-supervised pre-training and fine-tuned on LibriSpeech 960h<br>
 
 <br><br>
