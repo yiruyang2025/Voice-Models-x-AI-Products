@@ -128,32 +128,77 @@ EOF
 <br>
 
 ```bash
-python3 - << 'EOF'
-from datasets import load_dataset, Audio
+# ===== 3A. Mount Google Drive and download LibriSpeech to persistent storage =====
+
+# 1. Mount Google Drive
+import shutil
 import os
+from google.colab import drive
 
-proj = os.environ["PROJ"]
-hf_cache = os.environ["HF_HOME"]
-data_dir = os.path.join(proj, "data/librispeech_arrow")
-os.makedirs(data_dir, exist_ok=True)
+mount_point = '/content/drive'
+if os.path.exists(mount_point):
+    if os.listdir(mount_point):  # Mount point is not empty
+        shutil.rmtree(mount_point)  # Remove it to avoid ValueError
+drive.mount(mount_point)
 
+# 2. Set project paths
+project_root = "/content/drive/MyDrive/hearing_asr_dqlora"
+hf_cache = os.path.join(project_root, "cache", "hf")
+os.makedirs(hf_cache, exist_ok=True)
+
+# 3. Download and extract LibriSpeech using HuggingFace datasets
+from datasets import load_dataset_builder, DownloadConfig
+
+builder = load_dataset_builder("librispeech_asr", "clean")
+download_config = DownloadConfig(cache_dir=hf_cache)
+builder.download_and_prepare(download_config=download_config)
+
+print("✔ Download and extraction to Google Drive completed.")
+```
+
+<br><br>
+
+
+```bash
+%%bash
+# ===== 3B. Convert to Arrow format and save to Google Drive =====
+set -euxo pipefail
+
+export PROJECT_ROOT="/content/drive/MyDrive/hearing_asr_dqlora"
+export HF_HOME="${PROJECT_ROOT}/cache/hf"
+
+python3 - << 'EOF'
+import os
+from datasets import load_dataset, Audio
+
+# read env vars
+project_root = os.environ["PROJECT_ROOT"]
+cache_dir    = os.environ["HF_HOME"]
+arrow_dir    = os.path.join(project_root, "data", "librispeech_arrow")
+os.makedirs(arrow_dir, exist_ok=True)
+
+# mapping of HF splits to folder names
 splits = {
-    "train.clean.100": "train100",
-    "validation.clean": "validation",
-    "test.clean"      : "test"
+    "train.100" : "train100",
+    "validation": "validation",
+    "test"      : "test"
 }
 
+# build and save each split
 for hf_split, name in splits.items():
-    out_path = os.path.join(data_dir, name)
+    out_path = os.path.join(arrow_dir, name)
     if os.path.isdir(out_path):
-        print(f"Skip {name}, exists.")
+        print(f"→ Skip {name}, already exists.")
         continue
-    print(f"Loading {hf_split} …")
-    ds = load_dataset("librispeech_asr", "clean", split=hf_split,
-                      cache_dir=hf_cache)
-    ds = ds.cast_column("audio", Audio(sampling_rate=16_000))
+    print(f"→ Processing split '{hf_split}' → '{name}'")
+    ds = load_dataset(
+        "librispeech_asr",
+        "clean",
+        split=hf_split,
+        cache_dir=cache_dir
+    ).cast_column("audio", Audio(sampling_rate=16000))
     ds.save_to_disk(out_path)
-    print(f"Saved {name}: {len(ds)} examples")
+    print(f"✔ Saved '{name}' with {len(ds)} examples to {out_path}")
 EOF
 ```
 
