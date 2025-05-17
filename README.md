@@ -9,32 +9,40 @@
 <br>
 
 ```bash
-# Mount Drive
+# ===== 1. Setup Colab & Google Drive =====
+# Safe-mount: only mount if Drive is not yet available
 from google.colab import drive
-drive.mount("/content/drive")
+import os, pathlib, subprocess, time, json, shlex, textwrap
+
+if not os.path.isdir("/content/drive/MyDrive"):
+    drive.mount("/content/drive")          # interactive one-time mount
 
 # Project root on Drive
 PROJ = "/content/drive/MyDrive/hearing_asr_dqlora"
-!mkdir -p "$PROJ"
+os.makedirs(PROJ, exist_ok=True)
 %cd "$PROJ"
 print(f"Working directory -> {PROJ}")
 
-# Remove potential conflicts and install core libs
-%pip uninstall -y -q sentence-transformers         # optional
+# ------------------------------------------------------------------
+# (optional) remove conflicting package, then install core libraries
+# ------------------------------------------------------------------
+%pip uninstall -y -q sentence-transformers        # optional conflict fix
 !pip install -q "transformers==4.40.2" \
                "datasets[audio]" "peft==0.10.0" \
                "bitsandbytes" "accelerate" \
                "evaluate" "jiwer" "torchaudio"
 
-# Send every Hugging Face cache to Drive
-import os, pathlib, textwrap, subprocess, shlex, time, json
-
+# ------------------------------------------------------------------
+# Hugging Face caches → Drive (permanent, frees Colab disk)
+# ------------------------------------------------------------------
 HF_CACHE = f"{PROJ}/cache/hf"
 os.makedirs(HF_CACHE, exist_ok=True)
+
 os.environ["HF_HOME"]            = HF_CACHE
 os.environ["HF_DATASETS_CACHE"]  = HF_CACHE
 os.environ["TRANSFORMERS_CACHE"] = HF_CACHE
 os.environ["TMPDIR"]             = f"{PROJ}/cache/tmp"
+
 print("HF cache dir:", HF_CACHE)
 ```
 
@@ -46,13 +54,20 @@ print("HF cache dir:", HF_CACHE)
 <br>
 
 ```bash
-# Shell cell
-if [ ! -d "$PROJ/transformers" ]; then
-  git clone --depth 1 https://github.com/huggingface/transformers.git "$PROJ/transformers"
+%%bash
+# ===== 2. Clone speech-pretraining examples =====
+set -e
+
+REPO_DIR="$PROJ/transformers"
+
+# Clone once; skip if it already exists
+if [ ! -d "$REPO_DIR" ]; then
+  git clone --depth 1 https://github.com/huggingface/transformers.git "$REPO_DIR"
 fi
-cd "$PROJ/transformers/examples/pytorch/speech-pretraining"
-repo_dir="$PWD"
-echo "Repo cloned at $repo_dir"
+
+# Enter the speech-pretraining folder
+cd "$REPO_DIR/examples/pytorch/speech-pretraining" || exit 1
+pwd
 ```
 
 <br><br>
@@ -61,10 +76,13 @@ echo "Repo cloned at $repo_dir"
 
 <br>
 
+```bash
 /content/drive/MyDrive/hearing_asr_dqlora/data/librispeech_raw/
     ├── train-clean-100/
     ├── dev-clean/
     └── test-clean/
+```
+
 
 <br><br>
 
@@ -133,32 +151,38 @@ print("\nAll splits extracted under", RAW_DIR)
 
 
 ```bash
+# ===== 3-B. Build Arrow datasets on Google Drive =====
+from pathlib import Path
+from datasets import load_dataset, Audio
 
+PROJ      = "/content/drive/MyDrive/hearing_asr_dqlora"
+RAW_DIR   = Path(PROJ, "data/librispeech_raw")
+ARROW_DIR = Path(PROJ, "data/librispeech_arrow")
+ARROW_DIR.mkdir(parents=True, exist_ok=True)
 
+mapping = {
+    "train-clean-100": "train.100",
+    "dev-clean"      : "validation",
+    "test-clean"     : "test",
+}
 
+for raw_split, hf_split in mapping.items():
+    out_path = ARROW_DIR / hf_split
+    if out_path.exists():
+        print(f"✓ Arrow {hf_split} exists, skipping")
+        continue
+    print(f"Processing {hf_split} → {out_path}")
+    ds = load_dataset(
+        "librispeech_asr",
+        "clean",
+        split=hf_split,
+        cache_dir=str(PROJ + "/cache/archives")
+    ).cast_column("audio", Audio(sampling_rate=16_000))
+    ds.save_to_disk(out_path)
+    print(f"Saved {hf_split}: {len(ds)} examples")
 ```
 
 <br><br>
-
-
-```bash
-
-
-
-```
-
-<br><br>
-
-
-
-```bash
-
-
-
-```
-
-<br><br>
-
 
 
 
@@ -167,21 +191,45 @@ print("\nAll splits extracted under", RAW_DIR)
 <br>
 
 ```bash
-cd "$repo_dir"
+%%bash
+# 1) Define your Drive project root directory (must be consistent with Section 1)
+PROJ="/content/drive/MyDrive/hearing_asr_dqlora"
+EX_DIR="${PROJ}/transformers/examples/pytorch/speech-pretraining"
 
-python run_wav2vec2_pretraining_no_trainer.py \
-  --dataset_config_name clean \
-  --train_split_name train.100 \
-  --validation_split_name validation \
-  --dataset_cache_dir "$HF_CACHE" \
-  --data_dir "$DATA_DIR" \
-  --output_dir "$PROJ/models/teacher" \
-  --num_train_epochs 1 \
-  --per_device_train_batch_size 8 \
-  --learning_rate 1e-4 \
-  --logging_steps 100 \
-  --save_steps 500 \
-  --fp16
+# 2) Clone the transformers repository on demand
+if [ ! -d "$EX_DIR" ] || [ -z "$(ls -A "$EX_DIR")" ]; then
+rm -rf "${PROJ}/transformers"
+git clone --depth 1 https://github.com/huggingface/transformers.git "${PROJ}/transformers"
+fi
+
+# 3) Confirm that the example directory exists
+if [ ! -d "$EX_DIR" ]; then
+echo "ERROR: cannot find speech-pretraining at $EX_DIR" >&2
+exit 1
+fi
+
+# 4) Patch script: remove all trust_remote_code parameters
+sed -i \ 
+-e 's/, *trust_remote_code=args\.trust_remote_code//g' \ 
+-e 's/trust_remote_code=args\.trust_remote_code, *//g' \ 
+"$EX_DIR/run_wav2vec2_pretraining_no_trainer.py"
+
+#5) Pre-training
+set -euxo pipefail
+export WANDB_DISABLED=true
+
+python "$EX_DIR/run_wav2vec2_pretraining_no_trainer.py" \ 
+--dataset_name librispeech_asr \ 
+--dataset_config_names clean \ 
+--dataset_split_names train.100 validation \ 
+--model_name_or_path facebook/wav2vec2-base \ 
+--cache_dir "$PROJ/cache/hf" \ 
+--output_dir "$PROJ/models/teacher" \ 
+--per_device_train_batch_size 8 \ 
+--learning_rate 1e-4 \ 
+--num_train_epochs 1 \ 
+--logging_steps 100 \ 
+--saving_steps 500
 ```
 
 <br><br>
