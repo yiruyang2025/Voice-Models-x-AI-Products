@@ -4,6 +4,192 @@
 
 <br><br>
 
+# Option 1 - [facebook/wav2vec2-large-960h-lv60-self](https://huggingface.co/facebook/wav2vec2-large-960h-lv60-self) by API
+
+<br>
+
+- [2020 - wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations](https://arxiv.org/abs/2006.11477)
+
+<br><br>
+
+## 1. Setup Colab & Google Drive
+
+<br>
+
+```bash
+# Mount Drive and install dependencies
+from google.colab import drive
+drive.mount("/content/drive")
+
+# Define project root
+export PROJ="/content/drive/MyDrive/hearing_asr_dqlora"
+mkdir -p "$PROJ"/{cache/hf,data,models}
+
+# Install core libraries
+pip install -q transformers datasets[audio] peft bitsandbytes accelerate torchaudio jiwer
+```
+
+```bash
+# Redirect HF caches to Drive
+export HF_HOME="$PROJ/cache/hf"
+export HF_DATASETS_CACHE="$HF_HOME"
+export TRANSFORMERS_CACHE="$HF_HOME"
+echo "HF cache dir: $HF_HOME"
+```
+
+
+<br><br>
+
+## 2. Pretrained model – facebook/wav2vec2-large-960h-lv60-self
+
+<br>
+
+```bash
+python3 - << 'EOF'
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Tokenizer
+import os
+
+model_name = "facebook/wav2vec2-large-960h-lv60-self"
+out_dir = os.path.join(os.environ["PROJ"], "models/teacher")
+
+# Load and save
+model = Wav2Vec2ForCTC.from_pretrained(model_name)
+tokenizer = Wav2Vec2Tokenizer.from_pretrained(model_name)
+model.save_pretrained(out_dir)
+tokenizer.save_pretrained(out_dir)
+EOF
+```
+
+<br><br>
+
+
+## 3. Dataset for Fine-tuning (LibriSpeech train-clean-100 / validation / test)
+
+<br>
+
+```bash
+python3 - << 'EOF'
+from datasets import load_dataset, Audio
+import os
+
+proj = os.environ["PROJ"]
+hf_cache = os.environ["HF_HOME"]
+data_dir = os.path.join(proj, "data/librispeech_arrow")
+os.makedirs(data_dir, exist_ok=True)
+
+splits = {
+    "train.clean.100": "train100",
+    "validation.clean": "validation",
+    "test.clean"      : "test"
+}
+
+for hf_split, name in splits.items():
+    out_path = os.path.join(data_dir, name)
+    if os.path.isdir(out_path):
+        print(f"Skip {name}, exists.")
+        continue
+    print(f"Loading {hf_split} …")
+    ds = load_dataset("librispeech_asr", "clean", split=hf_split,
+                      cache_dir=hf_cache)
+    ds = ds.cast_column("audio", Audio(sampling_rate=16_000))
+    ds.save_to_disk(out_path)
+    print(f"Saved {name}: {len(ds)} examples")
+EOF
+```
+
+<br><br>
+
+
+
+## 4. Dump teacher logits (on noisy / enhanced wavs) to Drive
+
+<br>
+
+```bash
+cd "$PROJ"
+python dump_logits.py \
+  --model_name_or_path models/teacher \
+  --audio_dir data/librispeech_arrow/train100 \
+  --logit_cache cache/teacher_logits \
+  --chunk_seconds 20
+```
+
+<br><br>
+
+## 5. Training adapters – DQLoRA distillation
+
+<br>
+
+```bash
+cd "$PROJ"
+python run_ctc_adapter_distill.py \
+  --teacher_logits cache/teacher_logits \
+  --output_dir models/student_dqlora \
+  --dataset_config_name clean \
+  --train_split_name train100 \
+  --validation_split_name validation \
+  --dataset_cache_dir "$HF_HOME" \
+  --data_dir data/librispeech_arrow \
+  --quant_bits 4 \
+  --lora_r 8 --lora_alpha 16 --lora_dropout 0.1 \
+  --per_device_train_batch_size 16 \
+  --learning_rate 3e-5 \
+  --num_train_epochs 5 \
+  --logging_steps 50 \
+  --save_steps 250 \
+  --fp16
+```
+
+<br><br>
+
+## 6. Fine-tune student with CTC Loss
+
+<br>
+
+```bash
+cd "$PROJ"
+python run_ctc_adapter_distill.py \
+  --do_train --do_eval \
+  --model_name_or_path models/student_dqlora \
+  --output_dir models/student_finetuned \
+  --dataset_config_name clean \
+  --train_split_name train100 \
+  --validation_split_name validation \
+  --dataset_cache_dir "$HF_HOME" \
+  --data_dir data/librispeech_arrow \
+  --per_device_train_batch_size 16 \
+  --learning_rate 1e-5 \
+  --num_train_epochs 3 \
+  --logging_steps 50 \
+  --save_steps 250 \
+  --fp16
+```
+
+<br><br>
+
+
+## 7. Sampling with Adapters (Inference) 
+
+<br>
+
+```bash
+cd "$PROJ"
+python transcribe.py \
+  --model_path models/student_finetuned \
+  --audio_file "/content/drive/MyDrive/your_test_audio.wav" \
+  --chunk_length_s 30 \
+  --stride_length_s 5
+```
+
+<br><br>
+
+
+
+<br><br><br><br>
+
+
+# Option 2 - Pre-train By Yourself
+
 ## 1. Setup Colab & Google Drive
 
 <br>
@@ -285,7 +471,7 @@ python run_ctc_adapter_distill.py \
 
 <br><br>
 
-## 8. Sampling with Adapters (Inference)
+## 8. Sampling with Adapters (Inference) 
 
 ```bash
 cd "$repo_dir"
