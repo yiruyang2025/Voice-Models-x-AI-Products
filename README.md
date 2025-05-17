@@ -206,44 +206,46 @@ python transcribe.py \
 <br>
 
 ```bash
-# ===== 1. Setup Colab & Google Drive =====
-# Safe-mount: only mount if Drive is not yet available
 from google.colab import drive
-import os, pathlib, subprocess, time, json, shlex, textwrap
+import os
 
+# 1) Mount Google Drive if not already mounted
 if not os.path.isdir("/content/drive/MyDrive"):
-    drive.mount("/content/drive")          # interactive one-time mount
+    drive.mount("/content/drive")
 
-# Project root on Drive
-PROJ = "/content/drive/MyDrive/hearing_asr_dqlora"
-os.makedirs(PROJ, exist_ok=True)
-%cd "$PROJ"
-print(f"Working directory -> {PROJ}")
+# 2) Define project root on Drive
+PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
+os.makedirs(PROJECT_ROOT, exist_ok=True)
 
-# ------------------------------------------------------------------
-# (optional) remove conflicting package, then install core libraries
-# ------------------------------------------------------------------
-%pip uninstall -y -q sentence-transformers        # optional conflict fix
-!pip install -q "transformers==4.40.2" \
-               "datasets[audio]" "peft==0.10.0" \
-               "bitsandbytes" "accelerate" \
-               "evaluate" "jiwer" "torchaudio"
-
-# ------------------------------------------------------------------
-# Hugging Face caches → Drive (permanent, frees Colab disk)
-# ------------------------------------------------------------------
-HF_CACHE = f"{PROJ}/cache/hf"
-os.makedirs(HF_CACHE, exist_ok=True)
-
-os.environ["HF_HOME"]            = HF_CACHE
-os.environ["HF_DATASETS_CACHE"]  = HF_CACHE
-os.environ["TRANSFORMERS_CACHE"] = HF_CACHE
-os.environ["TMPDIR"]             = f"{PROJ}/cache/tmp"
-
-print("HF cache dir:", HF_CACHE)
+# 3) Change to the project directory
+%cd $PROJECT_ROOT
+print("Working directory:", PROJECT_ROOT)
 ```
 
 <br><br>
+
+
+```bash
+%%bash
+# 4) Uninstall potential conflicting package and install required libraries
+pip uninstall -y -q sentence-transformers
+pip install -q transformers==4.40.2 "datasets[audio]" peft==0.10.0 bitsandbytes accelerate evaluate jiwer torchaudio
+
+# 5) Configure Hugging Face caches on Drive
+export PROJECT_ROOT="/content/drive/MyDrive/hearing_asr_dqlora"
+export HF_HOME="$PROJECT_ROOT/cache/hf"
+export HF_DATASETS_CACHE="$PROJECT_ROOT/cache/hf"
+export TRANSFORMERS_CACHE="$PROJECT_ROOT/cache/hf"
+export TMPDIR="$PROJECT_ROOT/cache/tmp"
+
+# 6) Create cache directories
+mkdir -p "$HF_HOME" "$TMPDIR"
+
+echo "Hugging Face cache directory: $HF_HOME"
+```
+
+<br><br>
+
 
 
 ## 2. Clone speech-pretraining examples
@@ -542,7 +544,7 @@ else:
 
 ```bib
 @article{yiruyang2025,
-  title={Adapter-Only Distillation for Hearing Aid ASR},
+  title={XXX-Only Distillation for Hearing Aid ASR},
   author={Yiru Yang, xxxx},
   journal={arXiv preprint arXiv:2506.xxxxx},
   year={2025}
