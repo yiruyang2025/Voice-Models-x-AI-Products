@@ -130,27 +130,21 @@ EOF
 ```bash
 # ===== 3A. Mount Google Drive and download LibriSpeech to persistent storage =====
 
-# 1. Mount Google Drive
-import shutil
-import os
+# 1) Mount (or remount) Google Drive
 from google.colab import drive
+drive.mount('/content/drive', force_remount=True)
 
-mount_point = '/content/drive'
-if os.path.exists(mount_point):
-    if os.listdir(mount_point):  # Mount point is not empty
-        shutil.rmtree(mount_point)  # Remove it to avoid ValueError
-drive.mount(mount_point)
+# 2) Define project and cache paths on Drive
+import os
+PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
+HF_CACHE     = os.path.join(PROJECT_ROOT, "cache", "hf")
+os.makedirs(HF_CACHE, exist_ok=True)
 
-# 2. Set project paths
-project_root = "/content/drive/MyDrive/hearing_asr_dqlora"
-hf_cache = os.path.join(project_root, "cache", "hf")
-os.makedirs(hf_cache, exist_ok=True)
-
-# 3. Download and extract LibriSpeech using HuggingFace datasets
+# 3) Download and extract the LibriSpeech ASR "clean" subset
 from datasets import load_dataset_builder, DownloadConfig
 
 builder = load_dataset_builder("librispeech_asr", "clean")
-download_config = DownloadConfig(cache_dir=hf_cache)
+download_config = DownloadConfig(cache_dir=HF_CACHE)
 builder.download_and_prepare(download_config=download_config)
 
 print("✔ Download and extraction to Google Drive completed.")
