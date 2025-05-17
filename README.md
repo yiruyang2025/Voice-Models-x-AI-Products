@@ -6,7 +6,7 @@
 
 <br>
 
-# Option 1 - [facebook/wav2vec2-large-960h-lv60-self](https://huggingface.co/facebook/wav2vec2-large-960h-lv60-self) by API
+# Option 1 - [facebook/wav2vec2-large-960h-lv60-self](https://huggingface.co/facebook/wav2vec2-large-960h-lv60-self)
 
 <br>
 
@@ -279,9 +279,6 @@ python transcribe.py \
   --chunk_length_s 30 \
   --stride_length_s 5
 ```
-
-<br><br>
-
 
 
 <br><br><br><br>
