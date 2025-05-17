@@ -35,17 +35,41 @@
 <br>
 
 ```bash
+from google.colab import drive
+import os
 
+# 1) Mount Google Drive if not already mounted
+if not os.path.isdir("/content/drive/MyDrive"):
+    drive.mount("/content/drive")
 
+# 2) Define project root on Drive
+PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
+os.makedirs(PROJECT_ROOT, exist_ok=True)
 
+# 3) Change to the project directory
+%cd $PROJECT_ROOT
+print("Working directory:", PROJECT_ROOT)
 ```
 
 <br><br>
 
 ```bash
+%%bash
+# 4) Uninstall potential conflicting package and install required libraries
+pip uninstall -y -q sentence-transformers
+pip install -q transformers==4.40.2 "datasets[audio]" peft==0.10.0 bitsandbytes accelerate evaluate jiwer torchaudio
 
+# 5) Configure Hugging Face caches on Drive
+export PROJECT_ROOT="/content/drive/MyDrive/hearing_asr_dqlora"
+export HF_HOME="$PROJECT_ROOT/cache/hf"
+export HF_DATASETS_CACHE="$PROJECT_ROOT/cache/hf"
+export TRANSFORMERS_CACHE="$PROJECT_ROOT/cache/hf"
+export TMPDIR="$PROJECT_ROOT/cache/tmp"
 
+# 6) Create cache directories
+mkdir -p "$HF_HOME" "$TMPDIR"
 
+echo "Hugging Face cache directory: $HF_HOME"
 ```
 
 
