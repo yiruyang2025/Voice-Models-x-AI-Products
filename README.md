@@ -35,24 +35,17 @@
 <br>
 
 ```bash
-# Mount Drive and install dependencies
-from google.colab import drive
-drive.mount("/content/drive")
 
-# Define project root
-export PROJ="/content/drive/MyDrive/hearing_asr_dqlora"
-mkdir -p "$PROJ"/{cache/hf,data,models}
 
-# Install core libraries
-pip install -q transformers datasets[audio] peft bitsandbytes accelerate torchaudio jiwer
+
 ```
 
+<br><br>
+
 ```bash
-# Redirect HF caches to Drive
-export HF_HOME="$PROJ/cache/hf"
-export HF_DATASETS_CACHE="$HF_HOME"
-export TRANSFORMERS_CACHE="$HF_HOME"
-echo "HF cache dir: $HF_HOME"
+
+
+
 ```
 
 
