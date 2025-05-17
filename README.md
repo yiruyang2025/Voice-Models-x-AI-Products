@@ -1,6 +1,6 @@
 # SpeechProcessing-25
 
-For Edge AI, with NVIDIA A100 Tensor Core GPU
+- For Edge AI, with NVIDIA A100 Tensor Core GPU
 
 <br><br>
 
@@ -62,92 +62,32 @@ echo "Repo cloned at $repo_dir"
 <br>
 
 ```bash
-# -------- STEP A : download .flac archives to Drive cache --------
-# prerequisite: Block 1 set HF_* env vars → Drive
 
-import os, time, pathlib
-from datasets import load_dataset
 
-PROJ        = "/content/drive/MyDrive/hearing_asr_dqlora"
-HF_CACHE    = os.environ["HF_HOME"]        # already on Drive
-RAW_CACHE   = pathlib.Path(HF_CACHE) / "raw_archives"
-RAW_CACHE.mkdir(parents=True, exist_ok=True)
 
-print("HF raw cache :", RAW_CACHE)
-
-# Download only once; keep streaming=True so nothing is decoded yet
-_ = load_dataset(
-        "librispeech_asr",
-        "clean",
-        split="train.clean.100",
-        cache_dir=str(RAW_CACHE),
-        streaming=True)          # triggers archive download / extract
-print("Archives for train.clean.100 downloaded ✔")
-
-# do the same for val / test
-for split in ["validation.clean", "test.clean"]:
-    _ = load_dataset(
-            "librispeech_asr",
-            "clean",
-            split=split,
-            cache_dir=str(RAW_CACHE),
-            streaming=True)
-    print(f"Archives for {split} downloaded ✔")
-
-print("\nStep A finished — archives live on Drive; proceed to Step B.")
 ```
+
 
 <br><br>
 
 ```bash
-# -------- STEP B : build Arrow sets on Drive (skip if already built) --------
-import os, json, time
-from pathlib import Path
-from datasets import load_dataset, Audio
 
-PROJ      = "/content/drive/MyDrive/hearing_asr_dqlora"
-DATA_DIR  = Path(f"{PROJ}/data/librispeech_100")      # Arrow sets
-DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-print("Arrow dir:", DATA_DIR)
 
-splits = {
-    "train.100" : "train.clean.100",
-    "validation": "validation.clean",
-    "test"      : "test.clean"
-}
 
-for name, hf_split in splits.items():
-    out_path  = DATA_DIR / name
-    info_file = out_path / "dataset_info.json"
-
-    # --- skip if Arrow already exists on Drive ---
-    if info_file.is_file():
-        rows = json.load(open(info_file))["splits"][0]["num_examples"]
-        print(f"✓ {name:11s} exists ({rows:,} rows) – skipped")
-        continue
-
-    # --- build Arrow ---
-    t0 = time.time()
-    print(f"\n▶ materialising split {name}")
-
-    ds = (
-        load_dataset(
-            "librispeech_asr",
-            "clean",
-            split=hf_split,          # e.g. "train.clean.100"
-            cache_dir=os.environ["HF_HOME"],   # Drive cache from Step A
-            streaming=False
-        )
-        .cast_column("audio", Audio(sampling_rate=16_000))
-    )
-    ds.save_to_disk(out_path)
-    print(f"✓ saved → {out_path} | rows={len(ds):,} | {time.time()-t0:.1f}s")
-
-print("\nLibriSpeech ready at", DATA_DIR)
 ```
 
 <br><br>
+
+
+```bash
+
+
+
+```
+
+<br><br>
+
 
 ## 4. Pre-train teacher wav2vec 2.0 (CTC) – demo epoch
 
