@@ -61,17 +61,78 @@ echo "Repo cloned at $repo_dir"
 
 <br>
 
+/content/drive/MyDrive/hearing_asr_dqlora/data/librispeech_raw/
+    ├── train-clean-100/
+    ├── dev-clean/
+    └── test-clean/
+
+<br><br>
+
 ```bash
+# ===== 3-A1. Download LibriSpeech archives to Google Drive =====
+# Prerequisites: Sections 1–2 executed (Drive mounted, PROJ defined)
 
+import os
+from pathlib import Path
 
+# 1) Project base on Drive
+PROJ        = "/content/drive/MyDrive/hearing_asr_dqlora"
+ARCHIVE_DIR = Path(f"{PROJ}/cache/archives")
+ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
+# 2) URLs for the splits
+urls = {
+    "train-clean-100": "http://www.openslr.org/resources/12/train-clean-100.tar.gz",
+    "dev-clean"      : "http://www.openslr.org/resources/12/dev-clean.tar.gz",
+    "test-clean"     : "http://www.openslr.org/resources/12/test-clean.tar.gz",
+}
+
+# 3) Download each archive into Drive
+for name, url in urls.items():
+    out_path = ARCHIVE_DIR / f"{name}.tar.gz"
+    if out_path.exists():
+        print(f"✓ {out_path.name} already on Drive")
+    else:
+        print(f"Downloading {out_path.name} …")
+        # -c to resume partial downloads
+        os.system(f"wget -c {url} -O {out_path}")
+
+print("\nAll archives are in", ARCHIVE_DIR)
 ```
 
 
 <br><br>
 
 ```bash
+# ===== 3-A2. Extract LibriSpeech archives into Google Drive =====
+# Prerequisites: 3-A1 completed
 
+import tarfile
+from pathlib import Path
+
+PROJ     = "/content/drive/MyDrive/hearing_asr_dqlora"
+ARCHIVE_DIR = Path(f"{PROJ}/cache/archives")
+RAW_DIR     = Path(f"{PROJ}/data/librispeech_raw")
+RAW_DIR.mkdir(parents=True, exist_ok=True)
+
+# 1) Iterate over each .tar.gz in Drive and extract to RAW_DIR
+for archive in ARCHIVE_DIR.glob("*.tar.gz"):
+    split_name = archive.stem               # e.g. "train-clean-100"
+    target_dir = RAW_DIR / split_name
+    if target_dir.exists():
+        print(f"✓ {split_name} already extracted")
+        continue
+    print(f"Extracting {archive.name} → {target_dir} …")
+    with tarfile.open(archive) as tf:
+        tf.extractall(path=RAW_DIR)
+
+print("\nAll splits extracted under", RAW_DIR)
+```
+
+<br><br>
+
+
+```bash
 
 
 
@@ -87,6 +148,18 @@ echo "Repo cloned at $repo_dir"
 ```
 
 <br><br>
+
+
+
+```bash
+
+
+
+```
+
+<br><br>
+
+
 
 
 ## 4. Pre-train teacher wav2vec 2.0 (CTC) – demo epoch
