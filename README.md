@@ -192,40 +192,23 @@ for raw_split, hf_split in mapping.items():
 
 ```bash
 %%bash
-# ===== 4. Pre-train teacher wav2vec2 (CTC) – demo epoch with progress logging =====
+# ===== 4. Pre-train teacher wav2vec2 (CTC) – demo epoch with full logging =====
 
 # 1) Define your Drive project root and example directory
 PROJ="/content/drive/MyDrive/hearing_asr_dqlora"
 EX_DIR="${PROJ}/transformers/examples/pytorch/speech-pretraining"
-LOG_FILE="${PROJ}/models/teacher/training.log"
 
-# 2) Clone transformers repo on demand
-if [ ! -d "$EX_DIR" ] || [ -z "$(ls -A "$EX_DIR")" ]; then
-  rm -rf "${PROJ}/transformers"
-  git clone --depth 1 https://github.com/huggingface/transformers.git "${PROJ}/transformers"
-fi
-
-# 3) Verify example folder
-if [ ! -d "$EX_DIR" ]; then
-  echo "ERROR: speech-pretraining not found at $EX_DIR" >&2
-  exit 1
-fi
-
-# 4) Patch out any `trust_remote_code` flags in the script
-sed -i \
-  -e 's/, *trust_remote_code=args\.trust_remote_code//g' \
-  -e 's/trust_remote_code=args\.trust_remote_code, *//g' \
-  "$EX_DIR/run_wav2vec2_pretraining_no_trainer.py"
-
-# 5) Prepare to run
+# 2) Fail fast on any error and disable W&B
 set -euxo pipefail
 export WANDB_DISABLED=true
 
-echo "=== Pre-training started at $(date) ==="
-start_time=$(date +%s)
+# 3) Change into the example directory
+cd "$EX_DIR"
 
-# 6) Launch pre-training, log to console and to $LOG_FILE
-python "$EX_DIR/run_wav2vec2_pretraining_no_trainer.py" \
+# 4) Launch a short demo pre-training run
+#    NOTE: logging_steps is low so you see frequent updates,
+#    and we print all logs directly to the notebook (no filtering).
+python run_wav2vec2_pretraining_no_trainer.py \
   --dataset_name librispeech_asr \
   --dataset_config_names clean \
   --dataset_split_names train.100 validation \
@@ -235,16 +218,8 @@ python "$EX_DIR/run_wav2vec2_pretraining_no_trainer.py" \
   --per_device_train_batch_size 8 \
   --learning_rate 1e-4 \
   --num_train_epochs 1 \
-  --logging_steps 100 \
-  --saving_steps 500 \
-|& tee "$LOG_FILE"
-
-end_time=$(date +%s)
-elapsed=$((end_time - start_time))
-
-echo "=== Pre-training completed at $(date) ==="
-echo "=== Elapsed time: ${elapsed}s ==="
-echo "Full logs in $LOG_FILE"
+  --logging_steps 5 \
+  --saving_steps 500
 ```
 
 <br><br>
