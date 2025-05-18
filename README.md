@@ -204,51 +204,52 @@ print("✔ LibriSpeech extracted locally and copied to Drive at:", DRIVE_EXTRACT
 
 ```bash
 # A2_split_and_save.py
-# 1) Mount Google Drive
-# 2) Load each LibriSpeech split from the Drive cache without redownloading
-# 3) Prune columns and save Arrow datasets back to Drive
-
 import os
 from datasets import load_dataset, Audio
 from google.colab import drive
 
-# 1. Mount Google Drive
+# 1) Mount Google Drive
 drive.mount('/content/drive', force_remount=True)
 
-# 2. Define paths on Drive
-DRIVE_CACHE_DIR = "/content/drive/MyDrive/hearing_asr_dqlora/cache/hf"
-DRIVE_OUTPUT    = "/content/drive/MyDrive/hearing_asr_dqlora/data/librispeech_arrow"
-
-os.makedirs(DRIVE_CACHE_DIR, exist_ok=True)
+# 2) Define Drive paths (no /content writes)
+BASE_DIR     = "/content/drive/MyDrive/hearing_asr_dqlora"
+DRIVE_CACHE  = os.path.join(BASE_DIR, "cache", "hf")                # HF Download & prepare cache
+DRIVE_OUTPUT = os.path.join(BASE_DIR, "data", "librispeech_arrow")  # Final Arrow splits
+os.makedirs(DRIVE_CACHE, exist_ok=True)
 os.makedirs(DRIVE_OUTPUT, exist_ok=True)
 
-# 3. Generate, prune, and save each split
+# 3) Point Hugging Face libraries to Drive cache
+os.environ["HF_HOME"]           = DRIVE_CACHE
+os.environ["HF_DATASETS_CACHE"] = DRIVE_CACHE
+os.environ["TRANSFORMERS_CACHE"]= DRIVE_CACHE
+
+# 4) Load, prune, and save each split without any re-download
 for hf_split, folder in [
     ("train.100",  "train100"),
     ("validation", "validation"),
     ("test",       "test")
 ]:
-    output_path = os.path.join(DRIVE_OUTPUT, folder)
-    if os.path.isdir(output_path):
+    out_dir = os.path.join(DRIVE_OUTPUT, folder)
+    if os.path.isdir(out_dir):
         continue
 
-    # Load split, reusing existing cache and never redownloading
+    # load from Drive cache only
     ds = load_dataset(
         "librispeech_asr",
         "clean",
         split=hf_split,
-        cache_dir=DRIVE_CACHE_DIR,
-        download_mode="reuse_cache_if_exists"
+        cache_dir=DRIVE_CACHE,
+        download_mode="reuse_cache_if_exists"  # FORCE cache‐only reads
     )
 
-    # Cast audio column and remove all but audio & text
+    # keep only audio & text columns
     ds = ds.cast_column("audio", Audio(sampling_rate=16000))
-    cols_to_drop = [c for c in ds.column_names if c not in ("audio", "text")]
-    ds = ds.remove_columns(cols_to_drop)
+    drop_cols = [c for c in ds.column_names if c not in ("audio", "text")]
+    ds = ds.remove_columns(drop_cols)
 
-    # Save Arrow dataset directly to Drive
-    ds.save_to_disk(output_path)
-    print(f"Saved split '{folder}' to {output_path}")
+    # save Arrow dataset directly to Drive
+    ds.save_to_disk(out_dir)
+    print(f"Saved split '{folder}' to {out_dir}")
 ```
 
 <br><br>
