@@ -38,37 +38,29 @@
 from google.colab import drive
 import os
 
-# 1) Mount Google Drive if not already mounted
 if not os.path.isdir("/content/drive/MyDrive"):
     drive.mount("/content/drive")
 
-# 2) Define project root on Drive
-PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
+PROJECT_ROOT="/content/drive/MyDrive/hearing_asr_dqlora"
 os.makedirs(PROJECT_ROOT, exist_ok=True)
-
-# 3) Change to the project directory
 %cd $PROJECT_ROOT
-print("Working directory:", PROJECT_ROOT)
+echo "Working directory: $PROJECT_ROOT"
 ```
 
 <br><br>
 
 ```bash
 %%bash
-# 4) Uninstall potential conflicting package and install required libraries
 pip uninstall -y -q sentence-transformers
 pip install -q transformers==4.40.2 "datasets[audio]" peft==0.10.0 bitsandbytes accelerate evaluate jiwer torchaudio
 
-# 5) Configure Hugging Face caches on Drive
 export PROJECT_ROOT="/content/drive/MyDrive/hearing_asr_dqlora"
 export HF_HOME="$PROJECT_ROOT/cache/hf"
 export HF_DATASETS_CACHE="$PROJECT_ROOT/cache/hf"
 export TRANSFORMERS_CACHE="$PROJECT_ROOT/cache/hf"
 export TMPDIR="$PROJECT_ROOT/cache/tmp"
 
-# 6) Create cache directories
 mkdir -p "$HF_HOME" "$TMPDIR"
-
 echo "Hugging Face cache directory: $HF_HOME"
 ```
 
@@ -81,7 +73,6 @@ echo "Hugging Face cache directory: $HF_HOME"
 
 ```bash
 %%bash
-# 2-A. Align PyTorch, torchvision and torchaudio to Colab’s 2.6.x stack
 pip uninstall -y torch torchvision torchaudio fastai
 pip install -q torch==2.6.0+cu124 torchvision==0.21.0+cu124 torchaudio==2.6.0+cu124 \
     --extra-index-url https://download.pytorch.org/whl/cu124
@@ -95,24 +86,18 @@ pip install -q torch==2.6.0+cu124 torchvision==0.21.0+cu124 torchaudio==2.6.0+cu
 set -euxo pipefail
 export TORCHDYNAMO_DISABLE=1
 
-# 2-B
-
 python3 - << 'EOF'
 import os
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
-PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
-TEACHER_DIR = os.path.join(PROJECT_ROOT, "models", "teacher")
-os.makedirs(TEACHER_DIR, exist_ok=True)
+PROJECT_ROOT="/content/drive/MyDrive/hearing_asr_dqlora"
+TEACHER_DIR=os.path.join(PROJECT_ROOT,"models","teacher")
+os.makedirs(TEACHER_DIR,exist_ok=True)
 
-MODEL_ID = "facebook/wav2vec2-large-960h-lv60-self"
+MODEL_ID="facebook/wav2vec2-large-960h-lv60-self"
+model=Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
+processor=Wav2Vec2Processor.from_pretrained(MODEL_ID)
 
-# 1) Load model
-model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
-# 2) Load processor (including tokenizer + feature_extractor)
-processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
-
-# 3) Save
 model.save_pretrained(TEACHER_DIR)
 processor.save_pretrained(TEACHER_DIR)
 
@@ -183,8 +168,6 @@ os.makedirs(HF_CACHE, exist_ok=True)
 # Download + extract LibriSpeech locally only
 builder = load_dataset_builder("librispeech_asr", "clean")
 download_config = DownloadConfig(cache_dir=HF_CACHE)
-
-# This will download and extract train-clean-100, validation, and test
 builder.download_and_prepare(download_config=download_config)
 
 print("✔ Download and extraction complete (cached under /content)")
@@ -202,8 +185,8 @@ import os
 
 # Paths
 PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
-HF_CACHE     = "/content/cache/hf"                 # Local cache
-TMP_DIR      = "/content/tmp_arrows"               # Local temporary save dir
+HF_CACHE     = "/content/cache/hf"    # Local cache
+TMP_DIR      = "/content/tmp_arrows"  # Local temporary save dir
 FINAL_DIR    = os.path.join(PROJECT_ROOT, "data", "librispeech_arrow")
 
 os.makedirs(HF_CACHE, exist_ok=True)
@@ -252,7 +235,8 @@ for hf_split, folder in tqdm(splits.items(), desc="Processing splits", unit="spl
 <br>
 
 ```bash
-cd "$PROJ"
+# 4. Dump teacher logits
+cd "$PROJECT_ROOT"
 python dump_logits.py \
   --model_name_or_path models/teacher \
   --audio_dir data/librispeech_arrow/train100 \
@@ -267,22 +251,30 @@ python dump_logits.py \
 <br>
 
 ```bash
-cd "$PROJ"
+# 5. Adapter distillation on first 50 hours + early stopping
+cd "$PROJECT_ROOT"
 python run_ctc_adapter_distill.py \
   --teacher_logits cache/teacher_logits \
-  --output_dir models/student_dqlora \
+  --output_dir models/student_dqlora_subset \
   --dataset_config_name clean \
   --train_split_name train100 \
   --validation_split_name validation \
-  --dataset_cache_dir "$HF_HOME" \
   --data_dir data/librispeech_arrow \
+  --dataset_cache_dir "$HF_HOME" \
   --quant_bits 4 \
   --lora_r 8 --lora_alpha 16 --lora_dropout 0.1 \
   --per_device_train_batch_size 16 \
   --learning_rate 3e-5 \
-  --num_train_epochs 5 \
+  --num_train_epochs 10 \
+  --max_duration_hours 50 \
+  --evaluation_strategy steps \
+  --eval_steps 500 \
+  --load_best_model_at_end True \
+  --metric_for_best_model wer \
+  --greater_is_better False \
+  --save_total_limit 3 \
   --logging_steps 50 \
-  --save_steps 250 \
+  --save_steps 500 \
   --fp16
 ```
 
@@ -293,21 +285,28 @@ python run_ctc_adapter_distill.py \
 <br>
 
 ```bash
-cd "$PROJ"
+# 6. Fine-tune student with CTC Loss + early stopping
+cd "$PROJECT_ROOT"
 python run_ctc_adapter_distill.py \
   --do_train --do_eval \
-  --model_name_or_path models/student_dqlora \
-  --output_dir models/student_finetuned \
+  --model_name_or_path models/student_dqlora_subset \
+  --output_dir models/student_finetuned_subset \
   --dataset_config_name clean \
   --train_split_name train100 \
   --validation_split_name validation \
-  --dataset_cache_dir "$HF_HOME" \
   --data_dir data/librispeech_arrow \
+  --dataset_cache_dir "$HF_HOME" \
   --per_device_train_batch_size 16 \
   --learning_rate 1e-5 \
-  --num_train_epochs 3 \
+  --num_train_epochs 5 \
+  --evaluation_strategy steps \
+  --eval_steps 200 \
+  --load_best_model_at_end True \
+  --metric_for_best_model wer \
+  --greater_is_better False \
+  --save_total_limit 2 \
   --logging_steps 50 \
-  --save_steps 250 \
+  --save_steps 200 \
   --fp16
 ```
 
@@ -319,9 +318,10 @@ python run_ctc_adapter_distill.py \
 <br>
 
 ```bash
-cd "$PROJ"
+# 7. Inference
+cd "$PROJECT_ROOT"
 python transcribe.py \
-  --model_path models/student_finetuned \
+  --model_path models/student_finetuned_subset \
   --audio_file "/content/drive/MyDrive/your_test_audio.wav" \
   --chunk_length_s 30 \
   --stride_length_s 5
