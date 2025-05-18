@@ -151,80 +151,101 @@ export HF_HOME="${PROJECT_ROOT}/cache/hf"
 
 
 ```bash
-# A1: Download and extract LibriSpeech (train-clean-100, validation, test) locally
+# A1_download_prepare.py
+# 1) mounts Drive, 2) configures HF caches on Drive, 3) downloads & extracts LibriSpeech
 
-from datasets import load_dataset_builder, DownloadConfig
 import os
 import shutil
+from datasets import load_dataset_builder, DownloadConfig
+from google.colab import drive
 
-# Clean any Hugging Face cache that may exist on Google Drive
-shutil.rmtree("/root/.cache/huggingface", ignore_errors=True)
-shutil.rmtree("/content/drive/MyDrive/.cache/huggingface", ignore_errors=True)
+# 1. Mount Google Drive (idempotent)
+drive.mount('/content/drive', force_remount=True)
 
-# Define all local cache locations
-HF_CACHE = "/content/cache/hf"
-os.makedirs(HF_CACHE, exist_ok=True)
+# 2. Define project paths on Drive
+PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
+CACHE_DIR    = os.path.join(PROJECT_ROOT, "cache", "hf")
+os.makedirs(CACHE_DIR, exist_ok=True)
 
-# Download + extract LibriSpeech locally only
+# 3. Tell both datasets & transformers to use the same Drive cache
+os.environ["HF_HOME"]          = CACHE_DIR
+os.environ["HF_DATASETS_CACHE"]= CACHE_DIR
+os.environ["TRANSFORMERS_CACHE"]= CACHE_DIR
+
+# 4. Download & extract LibriSpeech (train-clean-100, validation, test)
+download_config = DownloadConfig(cache_dir=CACHE_DIR, force_download=False)
 builder = load_dataset_builder("librispeech_asr", "clean")
-download_config = DownloadConfig(cache_dir=HF_CACHE)
 builder.download_and_prepare(download_config=download_config)
 
-print("✔ Download and extraction complete (cached under /content)")
+print(f"✔ Raw LibriSpeech is now downloaded & extracted under {CACHE_DIR}")
 ```
 
 <br><br>
 
+
 ```bash
-# A2: Convert dataset splits to Arrow format, then move to Google Drive
+# A2_convert_to_arrow.py
+# Loads the exact same LibriSpeech splits from the Drive cache,
+# casts audio, prunes unwanted columns, and writes Arrow files
+# —all without ever redownloading or touching Colab local disk.
 
-from datasets import load_dataset, Audio
-from tqdm.notebook import tqdm
-import shutil
 import os
+import shutil
+from tqdm import tqdm
+from datasets import load_dataset, Audio, DownloadConfig
+from google.colab import drive
 
-# Paths
+# 1. Mount Google Drive (safe to call again)
+drive.mount('/content/drive', force_remount=True)
+
+# 2. Define all Drive-backed paths
 PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
-HF_CACHE     = "/content/cache/hf"    # Local cache
-TMP_DIR      = "/content/tmp_arrows"  # Local temporary save dir
+CACHE_DIR    = os.path.join(PROJECT_ROOT, "cache", "hf")
+TMP_DIR      = os.path.join(PROJECT_ROOT, "cache", "tmp_arrows")
 FINAL_DIR    = os.path.join(PROJECT_ROOT, "data", "librispeech_arrow")
 
-os.makedirs(HF_CACHE, exist_ok=True)
-os.makedirs(TMP_DIR, exist_ok=True)
-os.makedirs(FINAL_DIR, exist_ok=True)
+for path in (CACHE_DIR, TMP_DIR, FINAL_DIR):
+    os.makedirs(path, exist_ok=True)
 
-# HF splits to folder mapping
+# 3. Ensure HF libs use Drive cache
+os.environ["HF_HOME"]           = CACHE_DIR
+os.environ["HF_DATASETS_CACHE"] = CACHE_DIR
+os.environ["TRANSFORMERS_CACHE"]= CACHE_DIR
+
+download_config = DownloadConfig(cache_dir=CACHE_DIR, force_download=False)
+
+# 4. Process each split without redownloading
 splits = {
     "train.100":  "train100",
     "validation": "validation",
     "test":       "test"
 }
 
-for hf_split, folder in tqdm(splits.items(), desc="Processing splits", unit="split"):
-    final_out_path = os.path.join(FINAL_DIR, folder)
-    if os.path.isdir(final_out_path):
-        tqdm.write(f"→ Skipping '{folder}', already exists.")
+for hf_split, folder in tqdm(splits.items(), desc="Processing splits"):
+    out_dir = os.path.join(FINAL_DIR, folder)
+    if os.path.isdir(out_dir):
+        print(f"→ Skipping '{folder}', already exists at {out_dir}")
         continue
 
-    tqdm.write(f"→ Loading split '{hf_split}' → '{folder}'")
+    print(f"→ Loading split '{hf_split}' (reuse cache) → '{folder}'")
     ds = load_dataset(
         "librispeech_asr",
         "clean",
         split=hf_split,
-        cache_dir=HF_CACHE
-    ).cast_column("audio", Audio(sampling_rate=16000))
+        cache_dir=CACHE_DIR,
+        download_config=download_config,
+        download_mode="reuse_cache_if_exists"
+    ).cast_column("audio", Audio(sampling_rate=16_000))
 
-    # Remove extra metadata to reduce size
-    ds = ds.remove_columns([col for col in ds.column_names if col not in ["audio", "text"]])
+    # Keep only "audio" and "text"
+    to_remove = [c for c in ds.column_names if c not in ("audio", "text")]
+    ds = ds.remove_columns(to_remove)
 
-    # Save locally as Arrow
-    local_tmp_path = os.path.join(TMP_DIR, folder)
-    ds.save_to_disk(local_tmp_path)
-    tqdm.write(f"✔ Saved '{folder}' temporarily to local")
-
-    # Copy to Google Drive
-    shutil.copytree(local_tmp_path, final_out_path)
-    tqdm.write(f"✔ Moved '{folder}' to Google Drive: {final_out_path}")
+    # Save to a Drive-backed temp folder, then move to final
+    tmp_path = os.path.join(TMP_DIR, folder)
+    ds.save_to_disk(tmp_path)
+    shutil.move(tmp_path, out_dir)
+    print(f"✔ '{folder}' saved as Arrow dataset at {out_dir}")
 ```
 
 <br><br>
