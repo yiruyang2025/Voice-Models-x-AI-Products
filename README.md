@@ -184,71 +184,65 @@ print(f"✔ Raw LibriSpeech is now downloaded & extracted under {CACHE_DIR}")
 
 
 ```bash
-# A2_convert_to_arrow.py
-# Loads the exact same LibriSpeech splits from the Drive cache,
-# casts audio, prunes unwanted columns, and writes Arrow files
-# —all without ever redownloading or touching Colab local disk.
-
+# A2_download_extract.py
 import os
-import shutil
-from tqdm import tqdm
-from datasets import load_dataset, Audio, DownloadConfig
+from datasets import load_dataset_builder, DownloadConfig
 from google.colab import drive
 
-# 1. Mount Google Drive (safe to call again)
 drive.mount('/content/drive', force_remount=True)
 
-# 2. Define all Drive-backed paths
-PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
-CACHE_DIR    = os.path.join(PROJECT_ROOT, "cache", "hf")
-TMP_DIR      = os.path.join(PROJECT_ROOT, "cache", "tmp_arrows")
-FINAL_DIR    = os.path.join(PROJECT_ROOT, "data", "librispeech_arrow")
+PROJECT = "/content/drive/MyDrive/hearing_asr_dqlora"
+CACHE   = os.path.join(PROJECT, "cache", "hf")
+os.makedirs(CACHE, exist_ok=True)
 
-for path in (CACHE_DIR, TMP_DIR, FINAL_DIR):
-    os.makedirs(path, exist_ok=True)
+os.environ["HF_HOME"]           = CACHE
+os.environ["HF_DATASETS_CACHE"] = CACHE
+os.environ["TRANSFORMERS_CACHE"]= CACHE
 
-# 3. Ensure HF libs use Drive cache
-os.environ["HF_HOME"]           = CACHE_DIR
-os.environ["HF_DATASETS_CACHE"] = CACHE_DIR
-os.environ["TRANSFORMERS_CACHE"]= CACHE_DIR
+cfg = DownloadConfig(cache_dir=CACHE, force_download=False)
+builder = load_dataset_builder("librispeech_asr", "clean")
+builder.download_and_prepare(download_config=cfg)
 
-download_config = DownloadConfig(cache_dir=CACHE_DIR, force_download=False)
-
-# 4. Process each split without redownloading
-splits = {
-    "train.100":  "train100",
-    "validation": "validation",
-    "test":       "test"
-}
-
-for hf_split, folder in tqdm(splits.items(), desc="Processing splits"):
-    out_dir = os.path.join(FINAL_DIR, folder)
-    if os.path.isdir(out_dir):
-        print(f"→ Skipping '{folder}', already exists at {out_dir}")
-        continue
-
-    print(f"→ Loading split '{hf_split}' (reuse cache) → '{folder}'")
-    ds = load_dataset(
-        "librispeech_asr",
-        "clean",
-        split=hf_split,
-        cache_dir=CACHE_DIR,
-        download_config=download_config,
-        download_mode="reuse_cache_if_exists"
-    ).cast_column("audio", Audio(sampling_rate=16_000))
-
-    # Keep only "audio" and "text"
-    to_remove = [c for c in ds.column_names if c not in ("audio", "text")]
-    ds = ds.remove_columns(to_remove)
-
-    # Save to a Drive-backed temp folder, then move to final
-    tmp_path = os.path.join(TMP_DIR, folder)
-    ds.save_to_disk(tmp_path)
-    shutil.move(tmp_path, out_dir)
-    print(f"✔ '{folder}' saved as Arrow dataset at {out_dir}")
+print("✔ Download & extract complete at", CACHE)
 ```
 
 <br><br>
+
+
+```bash
+# A3_generate_splits.py
+import os, shutil
+from tqdm import tqdm
+from datasets import load_dataset, Audio
+from google.colab import drive
+
+drive.mount('/content/drive', force_remount=True)
+
+PROJECT = "/content/drive/MyDrive/hearing_asr_dqlora"
+CACHE   = os.path.join(PROJECT, "cache", "hf")
+TMP     = os.path.join(PROJECT, "cache", "tmp_arrows")
+FINAL   = os.path.join(PROJECT, "data", "librispeech_arrow")
+os.makedirs(TMP, exist_ok=True)
+os.makedirs(FINAL, exist_ok=True)
+
+os.environ["HF_HOME"]           = CACHE
+os.environ["HF_DATASETS_CACHE"] = CACHE
+os.environ["TRANSFORMERS_CACHE"]= CACHE
+
+for split,path in tqdm({"train.100":"train100","validation":"validation","test":"test"}.items()):
+    out = os.path.join(FINAL, path)
+    if os.path.isdir(out): continue
+    ds = load_dataset("librispeech_asr","clean",split=split,cache_dir=CACHE,local_files_only=True)\
+         .cast_column("audio",Audio(sampling_rate=16000))\
+         .remove_columns([c for c in ds.column_names if c not in ("audio","text")])
+    tmp = os.path.join(TMP, path)
+    ds.save_to_disk(tmp)
+    shutil.move(tmp, out)
+    print("✔", path, "->", out)
+```
+
+<br><br>
+
 
 
 ## 4. Dump teacher logits (on noisy / enhanced wavs) to Drive
