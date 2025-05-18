@@ -166,30 +166,61 @@ export HF_HOME="${PROJECT_ROOT}/cache/hf"
 
 
 ```bash
-# Convert LibriSpeech splits to Arrow format with live progress bars in Colab
+# A1: Download and extract LibriSpeech (train-clean-100, validation, test) locally
+
+from datasets import load_dataset_builder, DownloadConfig
+import os
+import shutil
+
+# Clean any Hugging Face cache that may exist on Google Drive
+shutil.rmtree("/root/.cache/huggingface", ignore_errors=True)
+shutil.rmtree("/content/drive/MyDrive/.cache/huggingface", ignore_errors=True)
+
+# Define all local cache locations
+HF_CACHE = "/content/cache/hf"
+os.makedirs(HF_CACHE, exist_ok=True)
+
+# Download + extract LibriSpeech locally only
+builder = load_dataset_builder("librispeech_asr", "clean")
+download_config = DownloadConfig(cache_dir=HF_CACHE)
+
+# This will download and extract train-clean-100, validation, and test
+builder.download_and_prepare(download_config=download_config)
+
+print("✔ Download and extraction complete (cached under /content)")
+```
+
+<br><br>
+
+```bash
+# A2: Convert dataset splits to Arrow format, then move to Google Drive
 
 from datasets import load_dataset, Audio
 from tqdm.notebook import tqdm
+import shutil
 import os
 
-# 1) Define paths
+# Paths
 PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
-HF_CACHE     = os.path.join(PROJECT_ROOT, "cache", "hf")
-ARROW_DIR    = os.path.join(PROJECT_ROOT, "data", "librispeech_arrow")
-os.makedirs(ARROW_DIR, exist_ok=True)
+HF_CACHE     = "/content/cache/hf"                 # Local cache
+TMP_DIR      = "/content/tmp_arrows"               # Local temporary save dir
+FINAL_DIR    = os.path.join(PROJECT_ROOT, "data", "librispeech_arrow")
 
-# 2) Map Hugging Face splits to folder names
+os.makedirs(HF_CACHE, exist_ok=True)
+os.makedirs(TMP_DIR, exist_ok=True)
+os.makedirs(FINAL_DIR, exist_ok=True)
+
+# HF splits to folder mapping
 splits = {
     "train.100":  "train100",
     "validation": "validation",
     "test":       "test"
 }
 
-# 3) Process each split with an outer tqdm
-for hf_split, folder in tqdm(splits.items(), desc="Overall splits", unit="split"):
-    out_path = os.path.join(ARROW_DIR, folder)
-    if os.path.isdir(out_path):
-        tqdm.write(f"→ Skipping {folder}, already exists.")
+for hf_split, folder in tqdm(splits.items(), desc="Processing splits", unit="split"):
+    final_out_path = os.path.join(FINAL_DIR, folder)
+    if os.path.isdir(final_out_path):
+        tqdm.write(f"→ Skipping '{folder}', already exists.")
         continue
 
     tqdm.write(f"→ Loading split '{hf_split}' → '{folder}'")
@@ -198,24 +229,22 @@ for hf_split, folder in tqdm(splits.items(), desc="Overall splits", unit="split"
         "clean",
         split=hf_split,
         cache_dir=HF_CACHE
-    ).cast_column("audio", Audio(sampling_rate=16_000))
+    ).cast_column("audio", Audio(sampling_rate=16000))
 
-    # 4) Use inner tqdm via ds.map to force iteration
-    ds = ds.map(
-        lambda batch: batch,
-        batched=True,
-        batch_size=500,
-        desc=f"Converting {folder}",
-        disable=False
-    )
+    # Remove extra metadata to reduce size
+    ds = ds.remove_columns([col for col in ds.column_names if col not in ["audio", "text"]])
 
-    # 5) Save Arrow dataset
-    ds.save_to_disk(out_path)
-    tqdm.write(f"✔ Saved '{folder}' with {len(ds)} examples to {out_path}")
+    # Save locally as Arrow
+    local_tmp_path = os.path.join(TMP_DIR, folder)
+    ds.save_to_disk(local_tmp_path)
+    tqdm.write(f"✔ Saved '{folder}' temporarily to local")
+
+    # Copy to Google Drive
+    shutil.copytree(local_tmp_path, final_out_path)
+    tqdm.write(f"✔ Moved '{folder}' to Google Drive: {final_out_path}")
 ```
 
 <br><br>
-
 
 
 ## 4. Dump teacher logits (on noisy / enhanced wavs) to Drive
