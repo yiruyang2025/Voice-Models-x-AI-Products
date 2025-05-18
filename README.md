@@ -151,33 +151,35 @@ export HF_HOME="${PROJECT_ROOT}/cache/hf"
 
 
 ```bash
-# A1_download_prepare.py
-# 1) mounts Drive, 2) configures HF caches on Drive, 3) downloads & extracts LibriSpeech
+# A1_download_extract.py
+# 1) Mount Drive (for final write-back)
+# 2) Download & extract LibriSpeech locally under /content
+# 3) Copy extracted folder to Drive for permanence
 
 import os
 import shutil
 from datasets import load_dataset_builder, DownloadConfig
 from google.colab import drive
 
-# 1. Mount Google Drive (idempotent)
+# 1. Mount Google Drive
 drive.mount('/content/drive', force_remount=True)
 
-# 2. Define project paths on Drive
-PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
-CACHE_DIR    = os.path.join(PROJECT_ROOT, "cache", "hf")
-os.makedirs(CACHE_DIR, exist_ok=True)
+# 2. Local paths
+LOCAL_CACHE = "/content/hf_cache"
+os.makedirs(LOCAL_CACHE, exist_ok=True)
 
-# 3. Tell both datasets & transformers to use the same Drive cache
-os.environ["HF_HOME"]          = CACHE_DIR
-os.environ["HF_DATASETS_CACHE"]= CACHE_DIR
-os.environ["TRANSFORMERS_CACHE"]= CACHE_DIR
+# 3. Download & extract into local cache
+dl_cfg  = DownloadConfig(cache_dir=LOCAL_CACHE, force_download=False)
+builder = load_dataset_builder("librispeech_asr", "clean", cache_dir=LOCAL_CACHE)
+builder.download_and_prepare(download_config=dl_cfg)
 
-# 4. Download & extract LibriSpeech (train-clean-100, validation, test)
-download_config = DownloadConfig(cache_dir=CACHE_DIR, force_download=False)
-builder = load_dataset_builder("librispeech_asr", "clean")
-builder.download_and_prepare(download_config=download_config)
+# 4. Copy extracted files to Drive
+DRIVE_EXTRACT = "/content/drive/MyDrive/hearing_asr_dqlora/cache/hf/librispeech_asr/clean"
+if os.path.isdir(DRIVE_EXTRACT):
+    shutil.rmtree(DRIVE_EXTRACT)
+shutil.copytree(os.path.join(LOCAL_CACHE, "librispeech_asr", "clean"), DRIVE_EXTRACT)
 
-print(f"✔ Raw LibriSpeech is now downloaded & extracted under {CACHE_DIR}")
+print("✔ LibriSpeech extracted locally and copied to Drive at:", DRIVE_EXTRACT)
 ```
 
 <br><br>
