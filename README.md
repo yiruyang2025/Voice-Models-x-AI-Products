@@ -38,29 +38,37 @@
 from google.colab import drive
 import os
 
+# 1) Mount Google Drive if not already mounted
 if not os.path.isdir("/content/drive/MyDrive"):
     drive.mount("/content/drive")
 
-PROJECT_ROOT="/content/drive/MyDrive/hearing_asr_dqlora"
+# 2) Define project root on Drive
+PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
 os.makedirs(PROJECT_ROOT, exist_ok=True)
+
+# 3) Change to the project directory
 %cd $PROJECT_ROOT
-echo "Working directory: $PROJECT_ROOT"
+print("Working directory:", PROJECT_ROOT)
 ```
 
 <br><br>
 
 ```bash
 %%bash
+# 4) Uninstall potential conflicting package and install required libraries
 pip uninstall -y -q sentence-transformers
 pip install -q transformers==4.40.2 "datasets[audio]" peft==0.10.0 bitsandbytes accelerate evaluate jiwer torchaudio
 
+# 5) Configure Hugging Face caches on Drive
 export PROJECT_ROOT="/content/drive/MyDrive/hearing_asr_dqlora"
 export HF_HOME="$PROJECT_ROOT/cache/hf"
 export HF_DATASETS_CACHE="$PROJECT_ROOT/cache/hf"
 export TRANSFORMERS_CACHE="$PROJECT_ROOT/cache/hf"
 export TMPDIR="$PROJECT_ROOT/cache/tmp"
 
+# 6) Create cache directories
 mkdir -p "$HF_HOME" "$TMPDIR"
+
 echo "Hugging Face cache directory: $HF_HOME"
 ```
 
@@ -73,6 +81,7 @@ echo "Hugging Face cache directory: $HF_HOME"
 
 ```bash
 %%bash
+# 2-A. Align PyTorch, torchvision and torchaudio to Colab’s 2.6.x stack
 pip uninstall -y torch torchvision torchaudio fastai
 pip install -q torch==2.6.0+cu124 torchvision==0.21.0+cu124 torchaudio==2.6.0+cu124 \
     --extra-index-url https://download.pytorch.org/whl/cu124
@@ -86,18 +95,24 @@ pip install -q torch==2.6.0+cu124 torchvision==0.21.0+cu124 torchaudio==2.6.0+cu
 set -euxo pipefail
 export TORCHDYNAMO_DISABLE=1
 
+# 2-B
+
 python3 - << 'EOF'
 import os
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 
-PROJECT_ROOT="/content/drive/MyDrive/hearing_asr_dqlora"
-TEACHER_DIR=os.path.join(PROJECT_ROOT,"models","teacher")
-os.makedirs(TEACHER_DIR,exist_ok=True)
+PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
+TEACHER_DIR = os.path.join(PROJECT_ROOT, "models", "teacher")
+os.makedirs(TEACHER_DIR, exist_ok=True)
 
-MODEL_ID="facebook/wav2vec2-large-960h-lv60-self"
-model=Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
-processor=Wav2Vec2Processor.from_pretrained(MODEL_ID)
+MODEL_ID = "facebook/wav2vec2-large-960h-lv60-self"
 
+# 1) Load model
+model = Wav2Vec2ForCTC.from_pretrained(MODEL_ID)
+# 2) Load processor (including tokenizer + feature_extractor)
+processor = Wav2Vec2Processor.from_pretrained(MODEL_ID)
+
+# 3) Save
 model.save_pretrained(TEACHER_DIR)
 processor.save_pretrained(TEACHER_DIR)
 
@@ -113,32 +128,50 @@ EOF
 <br>
 
 ```bash
-# ===== 3A. Mount Google Drive and download LibriSpeech to persistent storage =====
-
-# 1) Mount (or remount) Google Drive
-from google.colab import drive
-drive.mount('/content/drive', force_remount=True)
-
-# 2) Define project and cache paths on Drive
+# Optional: prevent debugger from interfering with frozen modules
 import os
-PROJECT_ROOT = "/content/drive/MyDrive/hearing_asr_dqlora"
-HF_CACHE     = os.path.join(PROJECT_ROOT, "cache", "hf")
-os.makedirs(HF_CACHE, exist_ok=True)
-
-# 3) Download and extract the LibriSpeech ASR "clean" subset
-from datasets import load_dataset_builder, DownloadConfig
-
-builder = load_dataset_builder("librispeech_asr", "clean")
-download_config = DownloadConfig(cache_dir=HF_CACHE)
-builder.download_and_prepare(download_config=download_config)
-
-print("✔ Download and extraction to Google Drive completed.")
+os.environ["PYDEVD_DISABLE_FILE_VALIDATION"] = "1"
 ```
 
 <br><br>
 
 
 ```bash
+!ls /content/drive/MyDrive/hearing_asr_dqlora
+```
+
+<br><br>
+
+
+```bash
+!ls /content/drive/MyDrive/hearing_asr_dqlora/cache
+```
+
+
+<br><br>
+
+
+```
+%%bash
+rm -rf /content/drive/MyDrive/hearing_asr_dqlora/cache/hf
+rm -rf /content/drive/MyDrive/hearing_asr_dqlora/cache/tmp
+bash
+```
+
+<br><br>
+
+
+```
+# View the capacity and usage of the entire mounted disk
+!df -h /content/drive
+
+# Check the size of each folder in the project directory and find the part that takes up the most space
+!du -sh /content/drive/MyDrive/hearing_asr_dqlora/* | sort -h
+```
+<br><br>
+
+
+```
 %%bash
 # ===== 3B. Convert to Arrow format with inline progress bars and save to Google Drive =====
 set -euxo pipefail
@@ -151,45 +184,20 @@ export HF_HOME="${PROJECT_ROOT}/cache/hf"
 
 
 ```bash
-# A1_download_extract.py
-# 1) Mount Drive (for final write-back)
-# 2) Download & extract LibriSpeech locally under /content
-# 3) Copy extracted folder to Drive for permanence
+!rm -rf ~/.cache/huggingface
+!rm -rf /root/.cache/huggingface
 
-import os
-import shutil
-from datasets import load_dataset_builder, DownloadConfig
-from google.colab import drive
-
-# 1. Mount Google Drive
-drive.mount('/content/drive', force_remount=True)
-
-# 2. Local paths
-LOCAL_CACHE = "/content/hf_cache"
-os.makedirs(LOCAL_CACHE, exist_ok=True)
-
-# 3. Download & extract into local cache
-dl_cfg  = DownloadConfig(cache_dir=LOCAL_CACHE, force_download=False)
-builder = load_dataset_builder("librispeech_asr", "clean", cache_dir=LOCAL_CACHE)
-builder.download_and_prepare(download_config=dl_cfg)
-
-# 4. Copy extracted files to Drive
-DRIVE_EXTRACT = "/content/drive/MyDrive/hearing_asr_dqlora/cache/hf/librispeech_asr/clean"
-if os.path.isdir(DRIVE_EXTRACT):
-    shutil.rmtree(DRIVE_EXTRACT)
-shutil.copytree(os.path.join(LOCAL_CACHE, "librispeech_asr", "clean"), DRIVE_EXTRACT)
-
-print("✔ LibriSpeech extracted locally and copied to Drive at:", DRIVE_EXTRACT)
-```
-
-<br><br>
-
-
-```bash
 !rm -rf /content/hf_cache
 !rm -rf /content/librispeech_arrow
 !rm -rf /content/tmp_arrows
 !rm -rf /content/local_librispeech_clean
+
+!rm -rf /content/drive/MyDrive/hearing_asr_dqlora/cache
+
+!apt-get clean
+!pip cache purge
+
+!df -h /content
 ```
 
 <br><br>
@@ -203,92 +211,47 @@ print("✔ LibriSpeech extracted locally and copied to Drive at:", DRIVE_EXTRACT
 
 
 ```bash
-# A2_split_and_save.py
+# A2_drive_prune_and_save.py
 import os
-from datasets import load_dataset, Audio
+import shutil
+from datasets import load_from_disk, Audio
 from google.colab import drive
 
 # 1) Mount Google Drive
 drive.mount('/content/drive', force_remount=True)
 
-# 2) Define Drive paths (no /content writes)
-BASE_DIR     = "/content/drive/MyDrive/hearing_asr_dqlora"
-DRIVE_CACHE  = os.path.join(BASE_DIR, "cache", "hf")                # HF Download & prepare cache
-DRIVE_OUTPUT = os.path.join(BASE_DIR, "data", "librispeech_arrow")  # Final Arrow splits
-os.makedirs(DRIVE_CACHE, exist_ok=True)
-os.makedirs(DRIVE_OUTPUT, exist_ok=True)
+# 2) Define Drive paths
+BASE_DIR      = "/content/drive/MyDrive/hearing_asr_dqlora"
+RAW_SPLITS    = os.path.join(BASE_DIR, "cache", "hf", "raw_splits")
+FINAL_SPLITS  = os.path.join(BASE_DIR, "data", "librispeech_arrow")
+TMP_DIR       = os.path.join(BASE_DIR, "cache", "tmp_pruned")
 
-# 3) Point Hugging Face libraries to Drive cache
-os.environ["HF_HOME"]           = DRIVE_CACHE
-os.environ["HF_DATASETS_CACHE"] = DRIVE_CACHE
-os.environ["TRANSFORMERS_CACHE"]= DRIVE_CACHE
+os.makedirs(FINAL_SPLITS, exist_ok=True)
+os.makedirs(TMP_DIR, exist_ok=True)
 
-# 4) Load, prune, and save each split without any re-download
-for hf_split, folder in [
-    ("train.100",  "train100"),
-    ("validation", "validation"),
-    ("test",       "test")
-]:
-    out_dir = os.path.join(DRIVE_OUTPUT, folder)
-    if os.path.isdir(out_dir):
+# 3) Load, prune, and save each split without any downloads
+for name in ["train100", "validation", "test"]:
+    src_dir = os.path.join(RAW_SPLITS, name)
+    dst_dir = os.path.join(FINAL_SPLITS, name)
+    if os.path.isdir(dst_dir):
         continue
 
-    # load from Drive cache only
-    ds = load_dataset(
-        "librispeech_asr",
-        "clean",
-        split=hf_split,
-        cache_dir=DRIVE_CACHE,
-        download_mode="reuse_cache_if_exists"  # FORCE cache‐only reads
-    )
+    # load pre-generated Arrow dataset from Drive
+    ds = load_from_disk(src_dir)
 
-    # keep only audio & text columns
+    # cast audio and drop extra columns
     ds = ds.cast_column("audio", Audio(sampling_rate=16000))
     drop_cols = [c for c in ds.column_names if c not in ("audio", "text")]
     ds = ds.remove_columns(drop_cols)
 
-    # save Arrow dataset directly to Drive
-    ds.save_to_disk(out_dir)
-    print(f"Saved split '{folder}' to {out_dir}")
+    # save to tmp then move to final (all on Drive)
+    tmp_out = os.path.join(TMP_DIR, name)
+    ds.save_to_disk(tmp_out)
+    shutil.move(tmp_out, dst_dir)
+    print(f"✔ Pruned split '{name}' saved at {dst_dir}")
 ```
 
 <br><br>
-
-
-```bash
-# A3_generate_splits.py
-import os, shutil
-from tqdm import tqdm
-from datasets import load_dataset, Audio
-from google.colab import drive
-
-drive.mount('/content/drive', force_remount=True)
-
-PROJECT = "/content/drive/MyDrive/hearing_asr_dqlora"
-CACHE   = os.path.join(PROJECT, "cache", "hf")
-TMP     = os.path.join(PROJECT, "cache", "tmp_arrows")
-FINAL   = os.path.join(PROJECT, "data", "librispeech_arrow")
-os.makedirs(TMP, exist_ok=True)
-os.makedirs(FINAL, exist_ok=True)
-
-os.environ["HF_HOME"]           = CACHE
-os.environ["HF_DATASETS_CACHE"] = CACHE
-os.environ["TRANSFORMERS_CACHE"]= CACHE
-
-for split,path in tqdm({"train.100":"train100","validation":"validation","test":"test"}.items()):
-    out = os.path.join(FINAL, path)
-    if os.path.isdir(out): continue
-    ds = load_dataset("librispeech_asr","clean",split=split,cache_dir=CACHE,local_files_only=True)\
-         .cast_column("audio",Audio(sampling_rate=16000))\
-         .remove_columns([c for c in ds.column_names if c not in ("audio","text")])
-    tmp = os.path.join(TMP, path)
-    ds.save_to_disk(tmp)
-    shutil.move(tmp, out)
-    print("✔", path, "->", out)
-```
-
-<br><br>
-
 
 
 ## 4. Dump teacher logits (on noisy / enhanced wavs) to Drive
@@ -296,8 +259,7 @@ for split,path in tqdm({"train.100":"train100","validation":"validation","test":
 <br>
 
 ```bash
-# 4. Dump teacher logits
-cd "$PROJECT_ROOT"
+cd "$PROJ"
 python dump_logits.py \
   --model_name_or_path models/teacher \
   --audio_dir data/librispeech_arrow/train100 \
@@ -312,30 +274,22 @@ python dump_logits.py \
 <br>
 
 ```bash
-# 5. Adapter distillation on first 50 hours + early stopping
-cd "$PROJECT_ROOT"
+cd "$PROJ"
 python run_ctc_adapter_distill.py \
   --teacher_logits cache/teacher_logits \
-  --output_dir models/student_dqlora_subset \
+  --output_dir models/student_dqlora \
   --dataset_config_name clean \
   --train_split_name train100 \
   --validation_split_name validation \
-  --data_dir data/librispeech_arrow \
   --dataset_cache_dir "$HF_HOME" \
+  --data_dir data/librispeech_arrow \
   --quant_bits 4 \
   --lora_r 8 --lora_alpha 16 --lora_dropout 0.1 \
   --per_device_train_batch_size 16 \
   --learning_rate 3e-5 \
-  --num_train_epochs 10 \
-  --max_duration_hours 50 \
-  --evaluation_strategy steps \
-  --eval_steps 500 \
-  --load_best_model_at_end True \
-  --metric_for_best_model wer \
-  --greater_is_better False \
-  --save_total_limit 3 \
+  --num_train_epochs 5 \
   --logging_steps 50 \
-  --save_steps 500 \
+  --save_steps 250 \
   --fp16
 ```
 
@@ -346,28 +300,21 @@ python run_ctc_adapter_distill.py \
 <br>
 
 ```bash
-# 6. Fine-tune student with CTC Loss + early stopping
-cd "$PROJECT_ROOT"
+cd "$PROJ"
 python run_ctc_adapter_distill.py \
   --do_train --do_eval \
-  --model_name_or_path models/student_dqlora_subset \
-  --output_dir models/student_finetuned_subset \
+  --model_name_or_path models/student_dqlora \
+  --output_dir models/student_finetuned \
   --dataset_config_name clean \
   --train_split_name train100 \
   --validation_split_name validation \
-  --data_dir data/librispeech_arrow \
   --dataset_cache_dir "$HF_HOME" \
+  --data_dir data/librispeech_arrow \
   --per_device_train_batch_size 16 \
   --learning_rate 1e-5 \
-  --num_train_epochs 5 \
-  --evaluation_strategy steps \
-  --eval_steps 200 \
-  --load_best_model_at_end True \
-  --metric_for_best_model wer \
-  --greater_is_better False \
-  --save_total_limit 2 \
+  --num_train_epochs 3 \
   --logging_steps 50 \
-  --save_steps 200 \
+  --save_steps 250 \
   --fp16
 ```
 
@@ -379,10 +326,9 @@ python run_ctc_adapter_distill.py \
 <br>
 
 ```bash
-# 7. Inference
-cd "$PROJECT_ROOT"
+cd "$PROJ"
 python transcribe.py \
-  --model_path models/student_finetuned_subset \
+  --model_path models/student_finetuned \
   --audio_file "/content/drive/MyDrive/your_test_audio.wav" \
   --chunk_length_s 30 \
   --stride_length_s 5
@@ -390,6 +336,7 @@ python transcribe.py \
 
 
 <br><br><br><br>
+
 
 
 # Option 2 - Pre-train By Yourself
