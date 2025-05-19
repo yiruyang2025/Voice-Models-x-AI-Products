@@ -138,12 +138,6 @@ os.environ["PYDEVD_DISABLE_FILE_VALIDATION"] = "1"
 
 ```bash
 !ls /content/drive/MyDrive/hearing_asr_dqlora
-```
-
-<br><br>
-
-
-```bash
 !ls /content/drive/MyDrive/hearing_asr_dqlora/cache
 ```
 
@@ -184,74 +178,94 @@ export HF_HOME="${PROJECT_ROOT}/cache/hf"
 
 
 ```bash
-!rm -rf ~/.cache/huggingface
-!rm -rf /root/.cache/huggingface
+# Clean Hugging Face local cache
+!rm -rf ~/.cache/huggingface /root/.cache/huggingface
 
-!rm -rf /content/hf_cache
-!rm -rf /content/librispeech_arrow
-!rm -rf /content/tmp_arrows
-!rm -rf /content/local_librispeech_clean
+# Clean Colab workspace residual data
+!rm -rf /content/hf_cache \
+/content/librispeech_arrow \
+/content/tmp_arrows \
+/content/local_librispeech_clean
 
+# Clean the cache on the project Drive
 !rm -rf /content/drive/MyDrive/hearing_asr_dqlora/cache
 
+# Clean the system and pip cache
 !apt-get clean
 !pip cache purge
 
+# Check /content disk usage
 !df -h /content
 ```
 
 <br><br>
 
-
 ```bash
-!df -h /content
-```
-
-<br><br>
-
-
-```bash
-# A2_drive_prune_and_save.py
+from datasets import load_dataset, Audio
 import os
-import shutil
-from datasets import load_from_disk, Audio
 from google.colab import drive
 
 # 1) Mount Google Drive
 drive.mount('/content/drive', force_remount=True)
 
-# 2) Define Drive paths
-BASE_DIR      = "/content/drive/MyDrive/hearing_asr_dqlora"
-RAW_SPLITS    = os.path.join(BASE_DIR, "cache", "hf", "raw_splits")
-FINAL_SPLITS  = os.path.join(BASE_DIR, "data", "librispeech_arrow")
-TMP_DIR       = os.path.join(BASE_DIR, "cache", "tmp_pruned")
+# 2) Set path
+BASE_DIR = "/content/drive/MyDrive/hearing_asr_dqlora"
+RAW_SPLITS = os.path.join(BASE_DIR, "cache", "hf", "raw_splits")
+FINAL_SPLITS = os.path.join(BASE_DIR, "data", "librispeech_arrow")
+os.makedirs(RAW_SPLITS, exist_ok=True)
+os.makedirs(FINAL_SPLITS, exist_ok=True)
+
+# 3) Download LibriSpeech from HF and save it in splits
+splits = { 
+"train100": "train.100", "validation": "validation", 
+"test": "test"
+}
+for name, hf_split in splits.items(): 
+print(f"Loading HF split {hf_split} as '{name}' ...") 
+ds = load_dataset("librispeech_asr", "clean", split=hf_split) 
+# (Optional) Cast_audio and drop columns can be cast here 
+# ds = ds.cast_column("audio", Audio(sampling_rate=16000)) 
+out_dir = os.path.join(RAW_SPLITS, name) 
+print(f"→ saving raw split '{name}' to {out_dir}") 
+ds.save_to_disk(out_dir)
+```
+
+<br><br>
+
+```bash
+import os
+import shutil
+from datasets import load_from_disk, Audio
+
+# (Drive is already mounted in A1, no need to repeat the mount here)
+BASE_DIR = "/content/drive/MyDrive/hearing_asr_dqlora"
+RAW_SPLITS = os.path.join(BASE_DIR, "cache", "hf", "raw_splits")
+FINAL_SPLITS = os.path.join(BASE_DIR, "data", "librispeech_arrow")
+TMP_DIR = os.path.join(BASE_DIR, "cache", "tmp_pruned")
 
 os.makedirs(FINAL_SPLITS, exist_ok=True)
 os.makedirs(TMP_DIR, exist_ok=True)
 
-# 3) Load, prune, and save each split without any downloads
-for name in ["train100", "validation", "test"]:
-    src_dir = os.path.join(RAW_SPLITS, name)
-    dst_dir = os.path.join(FINAL_SPLITS, name)
-    if os.path.isdir(dst_dir):
-        continue
+for name in ["train100", "validation", "test"]: 
+src_dir = os.path.join(RAW_SPLITS, name) 
+dst_dir = os.path.join(FINAL_SPLITS, name) 
+if os.path.isdir(dst_dir): 
+print(f"→ {name} already exists, skip.") 
+continue 
 
-    # load pre-generated Arrow dataset from Drive
-    ds = load_from_disk(src_dir)
+print(f"Processing split '{name}' ...") 
+ds = load_from_disk(src_dir) 
+ds = ds.cast_column("audio", Audio(sampling_rate=16000)) 
+drop_cols = [c for c in ds.column_names if c not in ("audio", "text")] 
+ds = ds.remove_columns(drop_cols) 
 
-    # cast audio and drop extra columns
-    ds = ds.cast_column("audio", Audio(sampling_rate=16000))
-    drop_cols = [c for c in ds.column_names if c not in ("audio", "text")]
-    ds = ds.remove_columns(drop_cols)
-
-    # save to tmp then move to final (all on Drive)
-    tmp_out = os.path.join(TMP_DIR, name)
-    ds.save_to_disk(tmp_out)
-    shutil.move(tmp_out, dst_dir)
-    print(f"✔ Pruned split '{name}' saved at {dst_dir}")
+tmp_out = os.path.join(TMP_DIR, name) 
+ds.save_to_disk(tmp_out) shutil.move(tmp_out, dst_dir)
+print(f"✔ Saved trimmed split '{name}' to {dst_dir}")
 ```
 
 <br><br>
+
 
 
 ## 4. Dump teacher logits (on noisy / enhanced wavs) to Drive
