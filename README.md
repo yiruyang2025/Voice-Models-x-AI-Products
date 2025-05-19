@@ -139,13 +139,6 @@ os.environ["PYDEVD_DISABLE_FILE_VALIDATION"] = "1"
 ```bash
 !ls /content/drive/MyDrive/hearing_asr_dqlora
 !ls /content/drive/MyDrive/hearing_asr_dqlora/cache
-```
-
-
-<br><br>
-
-
-```
 %%bash
 rm -rf /content/drive/MyDrive/hearing_asr_dqlora/cache/hf
 rm -rf /content/drive/MyDrive/hearing_asr_dqlora/cache/tmp
