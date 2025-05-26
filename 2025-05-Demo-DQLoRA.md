@@ -2,6 +2,8 @@
 # DQLoRA: Adapter-Guided Distillation for Lightweight ASR
 
 # 1. Install Dependencies and Import Libraries
+
+```bash
 !pip install -q transformers datasets torchaudio peft accelerate bitsandbytes
 import torch
 import torchaudio
@@ -18,13 +20,19 @@ from peft import get_peft_model, prepare_model_for_kbit_training, LoraConfig, Ta
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+```
+
 
 # 2. Load FLEURS (Clean) + DNS (Noise)
+```
 fleurs = load_dataset("google/fleurs", "en_us", split="train[:1%]")
 dns = load_dataset("lj_speech", split="train[:1%]")  # Use LJSpeech to simulate DNS noise
 fleurs = fleurs.cast_column("audio", Audio(sampling_rate=16000))
+```
+
 
 # 3. Load Student Model (Wav2Vec2 + QLoRA)
+```
 student_model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h", load_in_4bit=True, device_map="auto")
 student_model = prepare_model_for_kbit_training(student_model)
 
@@ -40,12 +48,19 @@ student_model = get_peft_model(student_model, lora_cfg)
 student_model.train()
 
 processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+```
+
 
 # 4. Load Teacher (Whisper Encoder)
+```
 teacher_model = WhisperModel.from_pretrained("openai/whisper-small").to("cuda").eval()
 teacher_processor = WhisperProcessor.from_pretrained("openai/whisper-small")
+```
+
 
 # 5. Data Preprocessing: Clean + Noisy + Labels
+
+```
 def add_noise(clean, noise, snr_db=5):
     clean = clean[:len(noise)]
     snr = 10 ** (snr_db / 10)
@@ -65,8 +80,11 @@ def preprocess(batch):
     return inputs
 
 dataloader = DataLoader(fleurs, batch_size=1, collate_fn=lambda x: preprocess(x[0]))
+```
+
 
 # 6. Training Loop (Distillation + CTC)
+```
 optimizer = AdamW(student_model.parameters(), lr=1e-4)
 lambda_distill = 0.7
 
@@ -99,3 +117,7 @@ for step, batch in enumerate(tqdm(dataloader)):
         break
 
 print("QLoRA + Whisper distillation demo complete.")
+```
+
+<br><br>
+
