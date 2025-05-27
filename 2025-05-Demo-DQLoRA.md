@@ -24,40 +24,49 @@ from tqdm import tqdm
 
 
 # 2. Load FLEURS (Clean) + DNS (Noise)
+
 ```
-# Step 1: Mount Google Drive
-from google.colab import drive
-drive.mount('/content/drive')
-
-# Step 2: Set up paths and environment
-import os
 from datasets import load_dataset, load_from_disk, Audio
+import os
+from shutil import copytree
+import shutil
 
-hf_cache_dir = "/content/drive/MyDrive/DQLoRA_Cache/hf_cache"
-fleurs_path = "/content/drive/MyDrive/DQLoRA_Cache/fleurs_subset"
-dns_path = "/content/drive/MyDrive/DQLoRA_Cache/dns_subset"
+# Google Drive paths
+fleurs_path = "/content/drive/MyDrive/data/fleurs_subset"
+dns_path = "/content/drive/MyDrive/data/dns_subset"
 
-os.environ["HF_DATASETS_CACHE"] = hf_cache_dir
+# Use a LOCAL cache dir (Colab-local, not on Drive)
+hf_cache_dir = "/content/hf_cache/"
+```
+<br><br>
 
+```
 # Step 3: Download FLEURS dataset if not cached
 if not os.path.exists(fleurs_path):
     print("Downloading FLEURS dataset...")
     fleurs_all = load_dataset("google/fleurs", "en_us", split="train", cache_dir=hf_cache_dir)
     fleurs_all = fleurs_all.cast_column("audio", Audio(sampling_rate=16000))
     fleurs_subset = fleurs_all.select(range(100))  # Select first 100 samples
-    fleurs_subset.save_to_disk(fleurs_path)
+
+    # Save locally then copy to Google Drive
+    fleurs_temp_path = "/content/fleurs_subset"
+    fleurs_subset.save_to_disk(fleurs_temp_path)
+    shutil.copytree(fleurs_temp_path, fleurs_path)
 else:
     print("FLEURS dataset already exists.")
 
-# Step 4: Download LJSpeech dataset if not cached
+# Step 4: Download DNS (we use LJSpeech as placeholder) if not cached
 if not os.path.exists(dns_path):
-    print("Downloading LJSpeech dataset...")
+    print("Downloading LJSpeech dataset as DNS-style noise...")
     dns_all = load_dataset("lj_speech", split="train", cache_dir=hf_cache_dir)
     dns_all = dns_all.cast_column("audio", Audio(sampling_rate=16000))
     dns_subset = dns_all.select(range(100))  # Select first 100 samples
-    dns_subset.save_to_disk(dns_path)
+
+    dns_temp_path = "/content/dns_subset"
+    dns_subset.save_to_disk(dns_temp_path)
+    shutil.copytree(dns_temp_path, dns_path)
 else:
-    print("LJSpeech dataset already exists.")
+    print("LJSpeech/DNS dataset already exists.")
 
 # Step 5: Load from disk
 fleurs = load_from_disk(fleurs_path)
@@ -69,6 +78,7 @@ print(f"FLEURS samples: {len(fleurs)}, DNS samples: {len(dns)}")
 
 
 # 3. Load Student Model (Wav2Vec2 + QLoRA)
+
 ```
 student_model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h", load_in_4bit=True, device_map="auto")
 student_model = prepare_model_for_kbit_training(student_model)
@@ -89,6 +99,7 @@ processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
 
 
 # 4. Load Teacher (Whisper Encoder)
+
 ```
 teacher_model = WhisperModel.from_pretrained("openai/whisper-small").to("cuda").eval()
 teacher_processor = WhisperProcessor.from_pretrained("openai/whisper-small")
@@ -121,6 +132,7 @@ dataloader = DataLoader(fleurs, batch_size=1, collate_fn=lambda x: preprocess(x[
 
 
 # 6. Training Loop (Distillation + CTC)
+
 ```
 optimizer = AdamW(student_model.parameters(), lr=1e-4)
 lambda_distill = 0.7
