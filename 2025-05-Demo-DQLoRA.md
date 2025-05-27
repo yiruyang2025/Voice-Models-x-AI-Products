@@ -11,14 +11,22 @@ import torch
 import torchaudio
 import numpy as np
 from datasets import load_dataset, Audio
+from torch.optim import AdamW
+
 from transformers import (
     Wav2Vec2Processor,
     Wav2Vec2ForCTC,
     WhisperProcessor,
-    WhisperModel,
-    AdamW
+    WhisperModel
 )
-from peft import get_peft_model, prepare_model_for_kbit_training, LoraConfig, TaskType
+
+from peft import (
+    get_peft_model,
+    prepare_model_for_kbit_training,
+    LoraConfig,
+    TaskType
+)
+
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -81,12 +89,6 @@ print(f"FLEURS loaded successfully. Samples: {len(fleurs_loaded)}")
 
 
 # 3. Load Student Model (Wav2Vec2 + QLoRA)
-
-```
-for name, module in student_model.named_modules():
-    if "attention" in name:
-        print(name)
-```
 
 ```
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor, BitsAndBytesConfig
