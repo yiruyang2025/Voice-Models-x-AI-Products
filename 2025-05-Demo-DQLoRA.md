@@ -26,64 +26,55 @@ from tqdm import tqdm
 # 2. Load FLEURS (Clean) + DNS (Noise)
 
 ```
-from datasets import load_dataset, load_from_disk, Audio
-import os
-from shutil import copytree
-import shutil
+!pip install -U datasets
+!pip install fsspec==2023.9.2
 
-# Google Drive paths
-fleurs_path = "/content/drive/MyDrive/data/fleurs_subset"
-dns_path = "/content/drive/MyDrive/data/dns_subset"
+from datasets import load_dataset
+fleurs = load_dataset("google/fleurs", name="en_us", split="train", streaming=True)
 
-# Use a LOCAL cache dir (Colab-local, not on Drive)
-hf_cache_dir = "/content/hf_cache/"
+!rm -rf ~/.cache/huggingface/datasets
 ```
 <br><br>
 
 ```
 import os
-os.environ.pop("HF_DATASETS_CACHE", None)
-# Step 3: Download FLEURS dataset if not already saved
+import shutil
 from datasets import load_dataset, load_from_disk, Audio
-import os, shutil
 
-fleurs_path = "/content/drive/MyDrive/data/fleurs_subset"
+# Step 0: Clear known HuggingFace environment caches
+os.environ.pop("HF_DATASETS_CACHE", None)
+os.environ.pop("HF_HOME", None)
+
+# Step 1: Clear manually any existing Drive cache (for safety)
+drive_cache = "/content/drive/MyDrive/.cache/huggingface"
+if os.path.exists(drive_cache):
+    shutil.rmtree(drive_cache)
+    print("Removed stale cache from Google Drive")
+
+# Step 2: Define paths
+hf_cache_dir = "/content/hf_cache"
 fleurs_temp_path = "/content/fleurs_subset"
+fleurs_drive_path = "/content/drive/MyDrive/data/fleurs_subset"
 
-if not os.path.exists(fleurs_path):
-    print("Downloading FLEURS dataset...")
-    # Do not use `cache_dir` here
-    fleurs_all = load_dataset("google/fleurs", "en_us", split="train")
-    fleurs_all = fleurs_all.cast_column("audio", Audio(sampling_rate=16000))
-    fleurs_subset = fleurs_all.select(range(100))  # Optional subset
+# Step 3: Download FLEURS only if not already processed
+if not os.path.exists(fleurs_drive_path):
+    print("Downloading fresh FLEURS dataset...")
 
-    # Save locally, then move to Google Drive
+    # Force download by setting download_mode="force_redownload"
+    fleurs = load_dataset("google/fleurs", "en_us", split="train", cache_dir=hf_cache_dir, download_mode="force_redownload")
+    fleurs = fleurs.cast_column("audio", Audio(sampling_rate=16000))
+    fleurs_subset = fleurs.select(range(100))  # Use subset
+
+    # Save locally then copy to Drive
     fleurs_subset.save_to_disk(fleurs_temp_path)
-    shutil.copytree(fleurs_temp_path, fleurs_path)
-    print("FLEURS dataset saved to Google Drive.")
+    shutil.copytree(fleurs_temp_path, fleurs_drive_path)
+    print(f"FLEURS saved to: {fleurs_drive_path}")
 else:
-    print("FLEURS dataset already exists.")
+    print(f"FLEURS already exists at: {fleurs_drive_path}")
 
-
-# Step 4: Download DNS (we use LJSpeech as placeholder) if not cached
-if not os.path.exists(dns_path):
-    print("Downloading LJSpeech dataset as DNS-style noise...")
-    dns_all = load_dataset("lj_speech", split="train", cache_dir=hf_cache_dir)
-    dns_all = dns_all.cast_column("audio", Audio(sampling_rate=16000))
-    dns_subset = dns_all.select(range(100))  # Select first 100 samples
-
-    dns_temp_path = "/content/dns_subset"
-    dns_subset.save_to_disk(dns_temp_path)
-    shutil.copytree(dns_temp_path, dns_path)
-else:
-    print("LJSpeech/DNS dataset already exists.")
-
-# Step 5: Load from disk
-fleurs = load_from_disk(fleurs_path)
-dns = load_from_disk(dns_path)
-
-print("Datasets loaded successfully from Google Drive.")
-print(f"FLEURS samples: {len(fleurs)}, DNS samples: {len(dns)}")
+# Step 4: Load and check
+fleurs_loaded = load_from_disk(fleurs_drive_path)
+print(f"FLEURS loaded successfully. Samples: {len(fleurs_loaded)}")
 ```
 
 
