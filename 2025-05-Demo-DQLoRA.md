@@ -203,19 +203,19 @@ import numpy as np
 from datasets import load_dataset, Audio
 from torch.utils.data import DataLoader
 
-# Step 1: Clean memory
+# ============ Step 0: Clean memory ============
 gc.collect()
 torch.cuda.empty_cache()
 
-# Step 2: Load DNS-style noise
+# ============ Step 1: Load Noise Dataset ============
 dns = load_dataset("lj_speech", split="train")
 dns = dns.cast_column("audio", Audio(sampling_rate=16000))
-dns = dns.select(range(5))
+dns = dns.select(range(5))  # limit for speed
 
-# Step 3: Limit FLEURS subset
-fleurs_loaded = fleurs_loaded.select(range(10))
+# ============ Step 2: Load FLEURS Subset ============
+fleurs_loaded = fleurs_loaded.select(range(10))  # reuse variable
 
-# Step 4: Preprocessing
+# ============ Step 3: Preprocessing ============
 def trim_audio(audio_array, max_duration_sec=2, sampling_rate=16000):
     return audio_array[:int(max_duration_sec * sampling_rate)]
 
@@ -239,75 +239,78 @@ def preprocess(batch):
         padding="longest"
     )
 
-    # Use input_ids instead of input_values for CTC
     with processor.as_target_processor():
         labels = processor(
             speech,
             sampling_rate=16000,
             return_tensors="pt",
             padding="longest"
-        ).input_ids  # 🔥 important fix
+        ).input_ids  # use input_ids for CTC
 
     inputs["labels"] = labels
     return inputs
 
-# Step 5: DataLoader
+# ============ Step 4: Dataloader ============
 dataloader = DataLoader(
     fleurs_loaded,
     batch_size=1,
     collate_fn=lambda x: preprocess(x[0])
 )
 
-# Step 6: Optimizer
+# ============ Step 5: Optimizer ============
 optimizer = AdamW(student_model.parameters(), lr=1e-4)
 lambda_distill = 0.7
 
-# Step 7: Training loop
+# ============ Step 6: Training Loop ============
 for step, batch in enumerate(tqdm(dataloader)):
+    input_values = batch["input_values"].squeeze(0).to("cuda").float()  # [T]
+    labels = batch["labels"].squeeze(0).to("cuda")                      # [L]
 
-    # Move to CUDA
-    batch = {k: v.to("cuda").half() for k, v in batch.items()}
-
-    input_values = batch["input_values"]
-    labels = batch["labels"]
+    input_values = input_values.unsqueeze(0)  # [1, T]
+    labels = labels.unsqueeze(0)              # [1, L]
 
     # === Whisper Teacher ===
     with torch.no_grad():
         whisper_inputs = teacher_processor.feature_extractor(
-            input_values.cpu().float().numpy(),
+            input_values.cpu().numpy(),
             sampling_rate=16000,
             return_tensors="pt"
-        ).input_features.to("cuda")
+        ).input_features.to("cuda")  # [1, 80, 3000]
 
-        teacher_outputs = teacher_model.encoder(whisper_inputs)
-        whisper_embeds = teacher_outputs.last_hidden_state  # [B, T, D]
+        whisper_outputs = teacher_model.encoder(whisper_inputs)
+        whisper_logits = whisper_outputs.last_hidden_state  # [1, T', D]
 
-    # === Student forward
-    student_outputs = student_model(input_values, output_hidden_states=True)
-    student_logits = student_outputs.logits  # [B, T, V]
-    student_hidden = student_outputs.hidden_states[-1]  # [B, T, D]
+    # === Student Forward ===
+    student_outputs = student_model(input_values)
+    student_logits = student_outputs.logits  # [1, T, V]
 
-    # Transpose for CTC [T, B, V]
-    student_logits = student_logits.transpose(0, 1)
+    # === Prepare for CTC ===
+    student_logits_ctc = student_logits.transpose(0, 1)  # [T, B, V]
+    input_lengths = torch.tensor([student_logits_ctc.size(0)], dtype=torch.long).to("cuda")
+    target_lengths = torch.tensor([labels.size(1)], dtype=torch.long).to("cuda")
 
-    # Lengths
-    B = student_logits.shape[1]
-    input_lengths = torch.full((B,), student_logits.shape[0], dtype=torch.long).to("cuda")
-    target_lengths = torch.sum(labels != processor.tokenizer.pad_token_id, dim=-1).to("cuda")
-
-    # === CTC loss
+    # === CTC Loss ===
     ctc_loss = F.ctc_loss(
-        student_logits.log_softmax(dim=-1).float(),
-        labels.int(),
+        student_logits_ctc.log_softmax(dim=-1),
+        labels,
         input_lengths,
         target_lengths,
         blank=processor.tokenizer.pad_token_id,
-        reduction="mean"
+        reduction='mean'
     )
 
-    # === Distillation loss (MSE)
-    distill_loss = F.mse_loss(student_hidden, whisper_embeds)
+    # === KL Distillation Loss ===
+    whisper_logits_proj = torch.nn.functional.interpolate(
+        whisper_logits.transpose(1, 2), size=student_logits.shape[1], mode="linear"
+    ).transpose(1, 2)
 
+    distill_loss = F.kl_div(
+        student_logits.log_softmax(dim=-1),
+        whisper_logits_proj.softmax(dim=-1),
+        reduction="batchmean"
+    )
+
+    # === Combine Loss ===
     total_loss = ctc_loss + lambda_distill * distill_loss
 
     total_loss.backward()
@@ -316,10 +319,10 @@ for step, batch in enumerate(tqdm(dataloader)):
 
     print(f"[Step {step}] CTC Loss: {ctc_loss.item():.4f} | Distill Loss: {distill_loss.item():.4f}")
 
-    if step > 2:
+    if step >= 2:
         break
 
-print("CTC + Whisper distillation training complete.")
+print("QLoRA + Whisper Distillation (CTC + KL) training complete.")
 ```
 
 # 7. Evaluation
