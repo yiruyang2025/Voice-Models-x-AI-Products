@@ -41,19 +41,29 @@ hf_cache_dir = "/content/hf_cache/"
 <br><br>
 
 ```
-# Step 3: Download FLEURS dataset if not cached
+import os
+os.environ.pop("HF_DATASETS_CACHE", None)
+# Step 3: Download FLEURS dataset if not already saved
+from datasets import load_dataset, load_from_disk, Audio
+import os, shutil
+
+fleurs_path = "/content/drive/MyDrive/data/fleurs_subset"
+fleurs_temp_path = "/content/fleurs_subset"
+
 if not os.path.exists(fleurs_path):
     print("Downloading FLEURS dataset...")
-    fleurs_all = load_dataset("google/fleurs", "en_us", split="train", cache_dir=hf_cache_dir)
+    # Do not use `cache_dir` here
+    fleurs_all = load_dataset("google/fleurs", "en_us", split="train")
     fleurs_all = fleurs_all.cast_column("audio", Audio(sampling_rate=16000))
-    fleurs_subset = fleurs_all.select(range(100))  # Select first 100 samples
+    fleurs_subset = fleurs_all.select(range(100))  # Optional subset
 
-    # Save locally then copy to Google Drive
-    fleurs_temp_path = "/content/fleurs_subset"
+    # Save locally, then move to Google Drive
     fleurs_subset.save_to_disk(fleurs_temp_path)
     shutil.copytree(fleurs_temp_path, fleurs_path)
+    print("FLEURS dataset saved to Google Drive.")
 else:
     print("FLEURS dataset already exists.")
+
 
 # Step 4: Download DNS (we use LJSpeech as placeholder) if not cached
 if not os.path.exists(dns_path):
