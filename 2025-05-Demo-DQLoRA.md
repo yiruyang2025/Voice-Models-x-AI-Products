@@ -344,7 +344,7 @@ pending help
 @article{yiruyang2025,
   title={A Lightweight Domain-Aware Denoising ASR via Adapter-guided Distillation},
   author={Yiru Yang, xxxx},
-  journal={arXiv preprint arXiv:2506.xxxxx},
+  journal={arXiv preprint arXiv:2505.xxxxx},
   year={2025}
 }
 ```
