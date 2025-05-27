@@ -147,25 +147,47 @@ teacher_processor = WhisperProcessor.from_pretrained("openai/whisper-small")
 # 5. Data Preprocessing: Clean + Noisy + Labels
 
 ```
+import numpy as np
+from torch.utils.data import DataLoader
+
+# Add noise to clean speech with specified SNR (dB)
 def add_noise(clean, noise, snr_db=5):
-    clean = clean[:len(noise)]
+    clean = clean[:len(noise)]  # Align length
     snr = 10 ** (snr_db / 10)
     signal_power = np.mean(clean ** 2)
     noise_power = signal_power / snr
-    noise = noise * (noise_power / np.mean(noise ** 2))**0.5
+    noise = noise * (noise_power / np.mean(noise ** 2)) ** 0.5
     return clean + noise
 
+# Preprocess a single example: clean + noisy + labels
 def preprocess(batch):
     speech = batch["audio"]["array"]
-    noise = dns[0]["audio"]["array"]
+    noise = dns[0]["audio"]["array"]  # First DNS sample
     speech_noisy = add_noise(np.array(speech), np.array(noise))
 
-    inputs = processor(speech_noisy, sampling_rate=16000, return_tensors="pt", padding=True)
-    labels = processor(speech, sampling_rate=16000, return_tensors="pt", padding=True).input_values[0]
+    inputs = processor(
+        speech_noisy,
+        sampling_rate=16000,
+        return_tensors="pt",
+        padding=True
+    )
+
+    labels = processor(
+        speech,
+        sampling_rate=16000,
+        return_tensors="pt",
+        padding=True
+    ).input_values[0]
+
     inputs["labels"] = labels
     return inputs
 
-dataloader = DataLoader(fleurs, batch_size=1, collate_fn=lambda x: preprocess(x[0]))
+# Wrap with DataLoader
+dataloader = DataLoader(
+    fleurs_loaded,  # or fleurs_subset if used
+    batch_size=1,
+    collate_fn=lambda x: preprocess(x[0])
+)
 ```
 
 
