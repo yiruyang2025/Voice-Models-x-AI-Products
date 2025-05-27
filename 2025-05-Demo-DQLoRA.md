@@ -171,8 +171,15 @@ print("QLoRA + Whisper distillation demo complete.")
 
 <br><br>
 
+## Citation
 
-
-
+```bib
+@article{yiruyang2025,
+  title={A Lightweight Domain-Aware Denoising ASR via Adapter-guided Distillation},
+  author={Yiru Yang, xxxx},
+  journal={arXiv preprint arXiv:2506.xxxxx},
+  year={2025}
+}
+```
 
 <br><br><br><br>
