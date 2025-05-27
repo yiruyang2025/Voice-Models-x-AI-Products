@@ -1,7 +1,7 @@
 
 # DQLoRA: Adapter-Guided Distillation for Lightweight ASR
 
-- With Python 3 + A100 GPU
+- With Python 3 + A100 GPU, deployed on Colab
 
 # 1. Install Dependencies and Import Libraries
 
