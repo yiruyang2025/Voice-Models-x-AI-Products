@@ -25,9 +25,46 @@ from tqdm import tqdm
 
 # 2. Load FLEURS (Clean) + DNS (Noise)
 ```
-fleurs = load_dataset("google/fleurs", "en_us", split="train[:1%]")
-dns = load_dataset("lj_speech", split="train[:1%]")  # Use LJSpeech to simulate DNS noise
-fleurs = fleurs.cast_column("audio", Audio(sampling_rate=16000))
+# Step 1: Mount Google Drive
+from google.colab import drive
+drive.mount('/content/drive')
+
+# Step 2: Set up paths and environment
+import os
+from datasets import load_dataset, load_from_disk, Audio
+
+hf_cache_dir = "/content/drive/MyDrive/DQLoRA_Cache/hf_cache"
+fleurs_path = "/content/drive/MyDrive/DQLoRA_Cache/fleurs_subset"
+dns_path = "/content/drive/MyDrive/DQLoRA_Cache/dns_subset"
+
+os.environ["HF_DATASETS_CACHE"] = hf_cache_dir
+
+# Step 3: Download FLEURS dataset if not cached
+if not os.path.exists(fleurs_path):
+    print("Downloading FLEURS dataset...")
+    fleurs_all = load_dataset("google/fleurs", "en_us", split="train", cache_dir=hf_cache_dir)
+    fleurs_all = fleurs_all.cast_column("audio", Audio(sampling_rate=16000))
+    fleurs_subset = fleurs_all.select(range(100))  # Select first 100 samples
+    fleurs_subset.save_to_disk(fleurs_path)
+else:
+    print("FLEURS dataset already exists.")
+
+# Step 4: Download LJSpeech dataset if not cached
+if not os.path.exists(dns_path):
+    print("Downloading LJSpeech dataset...")
+    dns_all = load_dataset("lj_speech", split="train", cache_dir=hf_cache_dir)
+    dns_all = dns_all.cast_column("audio", Audio(sampling_rate=16000))
+    dns_subset = dns_all.select(range(100))  # Select first 100 samples
+    dns_subset.save_to_disk(dns_path)
+else:
+    print("LJSpeech dataset already exists.")
+
+# Step 5: Load from disk
+fleurs = load_from_disk(fleurs_path)
+dns = load_from_disk(dns_path)
+
+print("Datasets loaded successfully from Google Drive.")
+print(f"FLEURS samples: {len(fleurs)}, DNS samples: {len(dns)}")
 ```
 
 
