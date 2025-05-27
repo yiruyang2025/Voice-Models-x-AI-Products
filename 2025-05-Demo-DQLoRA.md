@@ -198,25 +198,78 @@ from torch.optim import AdamW
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
+import gc
 
+# Optional: clear cache
+gc.collect()
+torch.cuda.empty_cache()
+
+from datasets import load_dataset, Audio
+
+# Load LJSpeech as a placeholder for DNS-style noise
+dns = load_dataset("lj_speech", split="train")
+dns = dns.cast_column("audio", Audio(sampling_rate=16000))
+dns = dns.select(range(5))  # Select first 5 samples
+
+# Only use first 10 samples for demo
+fleurs_loaded = fleurs_loaded.select(range(10))
+dns = dns.select(range(5))
+
+# Trim audio to max 2 seconds (32,000 samples at 16kHz)
+def trim_audio(audio_array, max_duration_sec=2, sampling_rate=16000):
+    max_len = int(max_duration_sec * sampling_rate)
+    return audio_array[:max_len]
+
+# Update your preprocess function with trimming
+def preprocess(batch):
+    speech = trim_audio(batch["audio"]["array"])
+    noise = trim_audio(dns[0]["audio"]["array"])
+    speech_noisy = add_noise(np.array(speech), np.array(noise))
+
+    inputs = processor(
+        speech_noisy,
+        sampling_rate=16000,
+        return_tensors="pt",
+        padding=True
+    )
+    labels = processor(
+        speech,
+        sampling_rate=16000,
+        return_tensors="pt",
+        padding=True
+    ).input_values[0]
+
+    inputs["labels"] = labels
+    return inputs
+
+# Rebuild dataloader
+from torch.utils.data import DataLoader
+dataloader = DataLoader(
+    fleurs_loaded,
+    batch_size=1,
+    collate_fn=lambda x: preprocess(x[0])
+)
+
+# Initialize optimizer
 optimizer = AdamW(student_model.parameters(), lr=1e-4)
 lambda_distill = 0.7
 
+# Run demo training loop
 for step, batch in enumerate(tqdm(dataloader)):
 
-    # Move batch tensors to GPU
+    # Move batch to GPU
     batch = {k: v.to("cuda") for k, v in batch.items()}
 
-    # === Teacher forward (Whisper encoder only) ===
+    # Whisper Teacher Forward
     with torch.no_grad():
         teacher_outputs = teacher_model.encoder(batch["input_values"])
-        whisper_embeds = teacher_outputs.last_hidden_state  # (B, T, D)
+        whisper_logits = teacher_model(batch["input_values"]).logits
 
-    # === Student forward ===
+    # Student Forward
     student_outputs = student_model(**batch)
-    student_logits = student_outputs.logits  # (B, T, V)
+    student_logits = student_outputs.logits
 
-    # === CTC Loss ===
+    # CTC Loss
     input_lengths = torch.full(
         size=(student_logits.shape[0],),
         fill_value=student_logits.shape[1],
@@ -238,26 +291,24 @@ for step, batch in enumerate(tqdm(dataloader)):
         reduction='mean'
     )
 
-    # === Distillation loss ===
-    with torch.no_grad():
-        whisper_logits = teacher_model(batch["input_values"]).logits  # (B, T, V)
-
+    # Distillation Loss (KL)
     distill_loss = F.kl_div(
         student_logits.log_softmax(dim=-1),
         whisper_logits.softmax(dim=-1),
         reduction="batchmean"
     )
 
-    # === Combine Losses ===
+    # Combine Losses
     total_loss = ctc_loss + lambda_distill * distill_loss
 
+    # Backward + Optimize
     total_loss.backward()
     optimizer.step()
     optimizer.zero_grad()
 
     print(f"[Step {step}] Total Loss: {total_loss.item():.4f}")
 
-    # For demo, break early
+    # Only demo 3 iterations
     if step > 2:
         break
 
