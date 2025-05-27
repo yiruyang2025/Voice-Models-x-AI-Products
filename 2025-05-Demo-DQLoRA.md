@@ -1,7 +1,9 @@
 
 # DQLoRA: Adapter-Guided Distillation for Lightweight ASR
 
-- On A100
+- With Python 3 + A100 GPU
+
+<br>
 
 # 1. Install Dependencies and Import Libraries
 
