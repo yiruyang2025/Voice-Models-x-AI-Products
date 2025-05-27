@@ -196,133 +196,138 @@ dataloader = DataLoader(
 # 6. Training Loop (Distillation + CTC)
 
 ```
-from torch.optim import AdamW
+from transformers import Wav2Vec2Processor, Wav2Vec2ForCTC, WhisperProcessor, WhisperModel
+
+processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
+student_model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h").to("cuda").half()
+
+teacher_processor = WhisperProcessor.from_pretrained("openai/whisper-base")
+teacher_model = WhisperModel.from_pretrained("openai/whisper-base").to("cuda").eval()
+```
+
+```
+print(f"[Step {step}] input_len={input_lengths.item()}, target_len={target_lengths.item()}, logits_T={student_logits.shape[1]}")
+
+print("Labels:", labels)
+print("Max Label Value:", labels.max().item(), "Pad ID:", processor.tokenizer.pad_token_id)
+```
+
+```
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
-import gc
-import numpy as np
-from datasets import load_dataset, Audio
 from torch.utils.data import DataLoader
+from torch.optim import AdamW
+from tqdm import tqdm
+import numpy as np
+import gc
 
-# ============ Step 0: Clean memory ============
+# Clear memory
 gc.collect()
 torch.cuda.empty_cache()
 
-# ============ Step 1: Load Noise Dataset ============
-dns = load_dataset("lj_speech", split="train")
-dns = dns.cast_column("audio", Audio(sampling_rate=16000))
-dns = dns.select(range(5))  # limit for speed
-
-# ============ Step 2: Load FLEURS Subset ============
-fleurs_loaded = fleurs_loaded.select(range(10))  # reuse variable
-
-# ============ Step 3: Preprocessing ============
-def trim_audio(audio_array, max_duration_sec=2, sampling_rate=16000):
-    return audio_array[:int(max_duration_sec * sampling_rate)]
-
-def add_noise(clean, noise, snr_db=5):
-    clean = clean[:len(noise)]
-    snr = 10 ** (snr_db / 10)
-    signal_power = np.mean(clean ** 2)
-    noise_power = signal_power / snr
-    noise = noise * (noise_power / np.mean(noise ** 2)) ** 0.5
-    return clean + noise
-
-def preprocess(batch):
-    speech = trim_audio(batch["audio"]["array"])
-    noise = trim_audio(dns[0]["audio"]["array"])
-    speech_noisy = add_noise(np.array(speech), np.array(noise))
-
-    inputs = processor(
-        speech_noisy,
-        sampling_rate=16000,
-        return_tensors="pt",
-        padding="longest"
-    )
-
-    with processor.as_target_processor():
-        labels = processor(
-            speech,
-            sampling_rate=16000,
-            return_tensors="pt",
-            padding="longest"
-        ).input_ids  # use input_ids for CTC
-
-    inputs["labels"] = labels
-    return inputs
-
-# ============ Step 4: Dataloader ============
-dataloader = DataLoader(
-    fleurs_loaded,
-    batch_size=1,
-    collate_fn=lambda x: preprocess(x[0])
-)
-
-# ============ Step 5: Optimizer ============
-optimizer = AdamW(student_model.parameters(), lr=1e-4)
+# Define hyperparameters
 lambda_distill = 0.7
+max_label_len = 96  # For safe CTC alignment
 
-# ============ Step 6: Training Loop ============
+# Optimizer
+optimizer = AdamW(student_model.parameters(), lr=1e-4)
+
+# Initialize projection layer later
+whisper_proj_head = None
+
+# Training loop
 for step, batch in enumerate(tqdm(dataloader)):
-    input_values = batch["input_values"].squeeze(0).to("cuda").float()  # [T]
-    labels = batch["labels"].squeeze(0).to("cuda")                      # [L]
+    # Skip bad samples
+    if batch is None or batch["input_values"] is None or batch["labels"] is None:
+        print(f"[Step {step}] Skipped: Null batch")
+        continue
 
-    input_values = input_values.unsqueeze(0)  # [1, T]
-    labels = labels.unsqueeze(0)              # [1, L]
+    if len(batch["input_values"]) == 0 or len(batch["labels"]) == 0:
+        print(f"[Step {step}] Skipped: Empty input or label")
+        continue
 
-    # === Whisper Teacher ===
+    # Convert to tensors
+    input_values = torch.tensor(batch["input_values"]).to(torch.float32).to("cuda")  # [T]
+    labels = torch.tensor(batch["labels"]).to("cuda")                                # [L]
+
+    print(f"[Step {step}] labels shape before crop: {labels.shape}")
+
+    # Truncate labels to safe max length
+    labels = labels[:max_label_len].unsqueeze(0)           # [1, L]
+    input_values = input_values.unsqueeze(0)               # [1, T]
+
+    # === Whisper teacher forward ===
     with torch.no_grad():
         whisper_inputs = teacher_processor.feature_extractor(
-            input_values.cpu().numpy(),
+            input_values.float().cpu().numpy(),
             sampling_rate=16000,
             return_tensors="pt"
-        ).input_features.to("cuda")  # [1, 80, 3000]
+        ).input_features.to("cuda")
 
         whisper_outputs = teacher_model.encoder(whisper_inputs)
-        whisper_logits = whisper_outputs.last_hidden_state  # [1, T', D]
+        whisper_logits = whisper_outputs.last_hidden_state  # [1, T_whisper, D]
 
-    # === Student Forward ===
-    student_outputs = student_model(input_values)
-    student_logits = student_outputs.logits  # [1, T, V]
+    # === Student forward ===
+    student_outputs = student_model(input_values.float())
+    student_logits = student_outputs.logits  # [1, T_student, Vocab]
 
-    # === Prepare for CTC ===
-    student_logits_ctc = student_logits.transpose(0, 1)  # [T, B, V]
-    input_lengths = torch.tensor([student_logits_ctc.size(0)], dtype=torch.long).to("cuda")
-    target_lengths = torch.tensor([labels.size(1)], dtype=torch.long).to("cuda")
+    # === Input & label length checks ===
+    input_lengths = torch.tensor([student_logits.shape[1]], dtype=torch.long).to("cuda")
+    target_lengths = torch.tensor([labels.shape[1]], dtype=torch.long).to("cuda")
+
+    if input_lengths.item() < target_lengths.item():
+        print(f"[Step {step}] Skipped: input_len={input_lengths.item()} < target_len={target_lengths.item()}")
+        continue
+
+    print(f"[Step {step}] input_len={input_lengths.item()}, target_len={target_lengths.item()}, logits_T={student_logits.shape[1]}")
+    print("Labels:", labels)
+    print("Max Label Value:", labels.max().item(), "Pad ID:", processor.tokenizer.pad_token_id)
 
     # === CTC Loss ===
-    ctc_loss = F.ctc_loss(
-        student_logits_ctc.log_softmax(dim=-1),
-        labels,
-        input_lengths,
-        target_lengths,
-        blank=processor.tokenizer.pad_token_id,
-        reduction='mean'
-    )
+    try:
+        student_logits_ctc = student_logits.transpose(0, 1)  # [T, B, V]
+        ctc_loss = F.ctc_loss(
+            student_logits_ctc.log_softmax(dim=-1),
+            labels,
+            input_lengths,
+            target_lengths,
+            blank=processor.tokenizer.pad_token_id,
+            reduction='mean',
+            zero_infinity=True
+        )
+    except Exception as e:
+        print(f"[Step {step}] CTC loss error: {str(e)}")
+        continue
 
-    # === KL Distillation Loss ===
-    whisper_logits_proj = torch.nn.functional.interpolate(
-        whisper_logits.transpose(1, 2), size=student_logits.shape[1], mode="linear"
+    # === Projection from Whisper to Student vocab ===
+    if whisper_proj_head is None:
+        whisper_proj_head = torch.nn.Linear(whisper_logits.size(-1), student_logits.size(-1)).to("cuda")
+
+    whisper_logits_proj = whisper_proj_head(whisper_logits)  # [1, T, V]
+    whisper_logits_interp = F.interpolate(
+        whisper_logits_proj.transpose(1, 2),
+        size=student_logits.shape[1],
+        mode="linear"
     ).transpose(1, 2)
 
+    # === KL Divergence Distillation Loss ===
     distill_loss = F.kl_div(
         student_logits.log_softmax(dim=-1),
-        whisper_logits_proj.softmax(dim=-1),
+        whisper_logits_interp.softmax(dim=-1),
         reduction="batchmean"
     )
 
-    # === Combine Loss ===
-    total_loss = ctc_loss + lambda_distill * distill_loss
+    if torch.isnan(distill_loss) or torch.isnan(ctc_loss):
+        print(f"[Step {step}] NaN Loss Detected. Skipped.")
+        continue
 
+    # === Backpropagation ===
+    total_loss = ctc_loss + lambda_distill * distill_loss
     total_loss.backward()
     optimizer.step()
     optimizer.zero_grad()
 
     print(f"[Step {step}] CTC Loss: {ctc_loss.item():.4f} | Distill Loss: {distill_loss.item():.4f}")
-
-    if step >= 2:
-        break
 
 print("QLoRA + Whisper Distillation (CTC + KL) training complete.")
 ```
