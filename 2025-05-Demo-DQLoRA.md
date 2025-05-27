@@ -81,20 +81,39 @@ print(f"FLEURS loaded successfully. Samples: {len(fleurs_loaded)}")
 # 3. Load Student Model (Wav2Vec2 + QLoRA)
 
 ```
-student_model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h", load_in_4bit=True, device_map="auto")
+from transformers import Wav2Vec2Processor, Wav2Vec2ForCTC
+from peft import (
+    prepare_model_for_kbit_training,
+    get_peft_model,
+    LoraConfig,
+    TaskType
+)
+
+# Load pre-trained Wav2Vec2 model in 4-bit quantized format (QLoRA)
+student_model = Wav2Vec2ForCTC.from_pretrained(
+    "facebook/wav2vec2-base-960h",
+    load_in_4bit=True,
+    device_map="auto"
+)
+
+# Prepare model for QLoRA training (freeze base weights, enable adapter injection)
 student_model = prepare_model_for_kbit_training(student_model)
 
-lora_cfg = LoraConfig(
+# Define QLoRA configuration for CTC-based ASR
+qlora_config = LoraConfig(
     r=8,
     lora_alpha=16,
     target_modules=["encoder.layers.*.attention"],
     lora_dropout=0.1,
     bias="none",
-    task_type=TaskType.CTC
+    task_type=TaskType.CTC  # Enables CTC-compatible adapter training
 )
-student_model = get_peft_model(student_model, lora_cfg)
-student_model.train()
 
+# Inject LoRA adapters into the quantized model
+student_model = get_peft_model(student_model, qlora_config)
+student_model.train()  # Set to training mode
+
+# Load audio processor (for feature extraction + label alignment)
 processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
 ```
 
