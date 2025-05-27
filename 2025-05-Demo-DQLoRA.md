@@ -330,8 +330,63 @@ print("QLoRA + Whisper Distillation (CTC + KL) training complete.")
 # 7. Evaluation
 
 ```
-pending help
+import torch
+import torchaudio
+import time
+import numpy as np
+from jiwer import wer
+from psutil import Process
 
+# ============ Step 1: Load Test Data ============
+fleurs_test = load_dataset("google/fleurs", "en_us", split="test[:1%]").cast_column("audio", Audio(sampling_rate=16000))
+dns_noise = load_dataset("lj_speech", split="train[:1%]").cast_column("audio", Audio(sampling_rate=16000))
+
+# ============ Step 2: Metric Containers ============
+hyp_clean, ref_clean = [], []
+hyp_noisy, ref_noisy = []
+total_time, total_samples = 0.0, 0
+process = Process()
+
+# ============ Step 3: Evaluation Loop ============
+for sample in fleurs_test.select(range(20)):  # 评估 20 条样本
+    ref_text = sample["transcription"]
+    speech = sample["audio"]["array"]
+    noise = dns_noise[0]["audio"]["array"]
+    
+    # === Clean ASR ===
+    start_time = time.time()
+    inputs = processor(speech, return_tensors="pt", sampling_rate=16000, padding=True).to("cuda")
+    with torch.no_grad():
+        logits = student_model(**inputs).logits
+    pred_ids = torch.argmax(logits, dim=-1)
+    transcription = processor.batch_decode(pred_ids)[0]
+    hyp_clean.append(transcription)
+    ref_clean.append(ref_text)
+    elapsed = time.time() - start_time
+    total_time += elapsed
+    total_samples += len(speech)
+
+    # === Noisy ASR ===
+    noisy_speech = add_noise(np.array(speech), np.array(noise), snr_db=5)
+    inputs_noisy = processor(noisy_speech, return_tensors="pt", sampling_rate=16000, padding=True).to("cuda")
+    with torch.no_grad():
+        logits_noisy = student_model(**inputs_noisy).logits
+    pred_ids_noisy = torch.argmax(logits_noisy, dim=-1)
+    transcription_noisy = processor.batch_decode(pred_ids_noisy)[0]
+    hyp_noisy.append(transcription_noisy)
+    ref_noisy.append(ref_text)
+
+# ============ Step 4: Compute Metrics ============
+wer_clean = wer(ref_clean, hyp_clean)
+wer_noisy = wer(ref_noisy, hyp_noisy)
+rtf = total_time / (total_samples / 16000)
+mem_usage = process.memory_info().rss / 1024**2  # in MB
+
+print("=== Evaluation Results for DQLoRA ===")
+print(f"WER (Clean): {wer_clean * 100:.2f}%")
+print(f"WER (Noisy): {wer_noisy * 100:.2f}%")
+print(f"RTF: {rtf:.3f}")
+print(f"Memory Usage (MB): {mem_usage:.1f}")
 ```
 
 
