@@ -206,7 +206,16 @@ for step, batch in enumerate(tqdm(dataloader)):
 print("QLoRA + Whisper distillation demo complete.")
 ```
 
+# 7. Evaluation
+
+```
+pending help
+
+```
+
+
 <br><br>
+
 
 ## Citation
 
