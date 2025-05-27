@@ -34,7 +34,7 @@ fleurs = load_dataset("google/fleurs", name="en_us", split="train", streaming=Tr
 
 !rm -rf ~/.cache/huggingface/datasets
 ```
-<br><br>
+<br>
 
 ```
 import os
