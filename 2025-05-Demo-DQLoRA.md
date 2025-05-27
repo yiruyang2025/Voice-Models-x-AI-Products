@@ -136,6 +136,9 @@ processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
 # 4. Load Teacher (Whisper Encoder)
 
 ```
+from transformers import WhisperModel, WhisperProcessor
+
+# Load Whisper encoder as teacher (frozen)
 teacher_model = WhisperModel.from_pretrained("openai/whisper-small").to("cuda").eval()
 teacher_processor = WhisperProcessor.from_pretrained("openai/whisper-small")
 ```
