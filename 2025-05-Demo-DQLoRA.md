@@ -335,12 +335,20 @@ print("QLoRA + Whisper Distillation (CTC + KL) training complete.")
 # 7. Evaluation
 
 ```
+from transformers import Wav2Vec2Processor, Wav2Vec2ForCTC
+
+processor = Wav2Vec2Processor.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-english")
+student_model = Wav2Vec2ForCTC.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-english").to("cuda")
+```
+
+```
 import torch
 import torchaudio
 import time
 import numpy as np
 from jiwer import wer
 from psutil import Process
+from datasets import load_dataset, Audio
 
 # ============ Step 1: Load Test Data ============
 fleurs_test = load_dataset("google/fleurs", "en_us", split="test[:1%]").cast_column("audio", Audio(sampling_rate=16000))
@@ -348,17 +356,37 @@ dns_noise = load_dataset("lj_speech", split="train[:1%]").cast_column("audio", A
 
 # ============ Step 2: Metric Containers ============
 hyp_clean, ref_clean = [], []
-hyp_noisy, ref_noisy = []
+hyp_noisy, ref_noisy = [], []
 total_time, total_samples = 0.0, 0
 process = Process()
 
-# ============ Step 3: Evaluation Loop ============
-for sample in fleurs_test.select(range(20)):  # 评估 20 条样本
+# ============ Step 3: Define Noise Addition ============
+def add_noise(speech, noise, snr_db):
+    speech = np.array(speech)
+    noise = np.array(noise)
+
+    # Repeat or truncate noise to match speech length
+    if len(noise) < len(speech):
+        repeat_count = int(np.ceil(len(speech) / len(noise)))
+        noise = np.tile(noise, repeat_count)[:len(speech)]
+    else:
+        noise = noise[:len(speech)]
+
+    # Compute power and apply SNR scaling
+    speech_power = np.mean(speech ** 2)
+    noise_power = np.mean(noise ** 2)
+    factor = (speech_power / noise_power) / (10 ** (snr_db / 10))
+    noisy = speech + np.sqrt(factor) * noise
+    return np.clip(noisy, -1.0, 1.0)
+
+# ============ Step 4: Evaluation Loop ============
+num_samples = min(6, len(fleurs_test))  # ensure valid indexing
+for sample in fleurs_test.select(range(num_samples)):
     ref_text = sample["transcription"]
     speech = sample["audio"]["array"]
     noise = dns_noise[0]["audio"]["array"]
-    
-    # === Clean ASR ===
+
+    # --- Clean Speech ---
     start_time = time.time()
     inputs = processor(speech, return_tensors="pt", sampling_rate=16000, padding=True).to("cuda")
     with torch.no_grad():
@@ -371,8 +399,8 @@ for sample in fleurs_test.select(range(20)):  # 评估 20 条样本
     total_time += elapsed
     total_samples += len(speech)
 
-    # === Noisy ASR ===
-    noisy_speech = add_noise(np.array(speech), np.array(noise), snr_db=5)
+    # --- Noisy Speech ---
+    noisy_speech = add_noise(speech, noise, snr_db=5)
     inputs_noisy = processor(noisy_speech, return_tensors="pt", sampling_rate=16000, padding=True).to("cuda")
     with torch.no_grad():
         logits_noisy = student_model(**inputs_noisy).logits
@@ -381,11 +409,11 @@ for sample in fleurs_test.select(range(20)):  # 评估 20 条样本
     hyp_noisy.append(transcription_noisy)
     ref_noisy.append(ref_text)
 
-# ============ Step 4: Compute Metrics ============
+# ============ Step 5: Compute Metrics ============
 wer_clean = wer(ref_clean, hyp_clean)
 wer_noisy = wer(ref_noisy, hyp_noisy)
 rtf = total_time / (total_samples / 16000)
-mem_usage = process.memory_info().rss / 1024**2  # in MB
+mem_usage = process.memory_info().rss / 1024**2  # MB
 
 print("=== Evaluation Results for DQLoRA ===")
 print(f"WER (Clean): {wer_clean * 100:.2f}%")
