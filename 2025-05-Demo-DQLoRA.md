@@ -194,34 +194,70 @@ dataloader = DataLoader(
 # 6. Training Loop (Distillation + CTC)
 
 ```
+from torch.optim import AdamW
+import torch
+import torch.nn.functional as F
+from tqdm import tqdm
+
 optimizer = AdamW(student_model.parameters(), lr=1e-4)
 lambda_distill = 0.7
 
 for step, batch in enumerate(tqdm(dataloader)):
+
+    # Move batch tensors to GPU
     batch = {k: v.to("cuda") for k, v in batch.items()}
 
-    # Teacher: Get logits
+    # === Teacher forward (Whisper encoder only) ===
     with torch.no_grad():
         teacher_outputs = teacher_model.encoder(batch["input_values"])
-        teacher_embeds = teacher_outputs.last_hidden_state
+        whisper_embeds = teacher_outputs.last_hidden_state  # (B, T, D)
 
-    # Student: Forward pass
+    # === Student forward ===
     student_outputs = student_model(**batch)
-    student_logits = student_outputs.logits
+    student_logits = student_outputs.logits  # (B, T, V)
 
-    # Loss: CTC + Distillation
-    ctc_loss = F.ctc_loss(student_logits.log_softmax(dim=-1), batch["labels"], torch.full((1,), student_logits.shape[1], dtype=torch.long).to("cuda"), torch.full((1,), batch["labels"].shape[1], dtype=torch.long).to("cuda"), blank=processor.tokenizer.pad_token_id, reduction='mean')
+    # === CTC Loss ===
+    input_lengths = torch.full(
+        size=(student_logits.shape[0],),
+        fill_value=student_logits.shape[1],
+        dtype=torch.long
+    ).to("cuda")
 
+    target_lengths = torch.full(
+        size=(batch["labels"].shape[0],),
+        fill_value=batch["labels"].shape[1],
+        dtype=torch.long
+    ).to("cuda")
+
+    ctc_loss = F.ctc_loss(
+        student_logits.log_softmax(dim=-1),
+        batch["labels"],
+        input_lengths,
+        target_lengths,
+        blank=processor.tokenizer.pad_token_id,
+        reduction='mean'
+    )
+
+    # === Distillation loss ===
     with torch.no_grad():
-        whisper_logits = teacher_model(batch["input_values"]).logits
+        whisper_logits = teacher_model(batch["input_values"]).logits  # (B, T, V)
 
-    distill_loss = F.kl_div(student_logits.log_softmax(dim=-1), whisper_logits.softmax(dim=-1), reduction="batchmean")
+    distill_loss = F.kl_div(
+        student_logits.log_softmax(dim=-1),
+        whisper_logits.softmax(dim=-1),
+        reduction="batchmean"
+    )
+
+    # === Combine Losses ===
     total_loss = ctc_loss + lambda_distill * distill_loss
 
     total_loss.backward()
     optimizer.step()
     optimizer.zero_grad()
 
+    print(f"[Step {step}] Total Loss: {total_loss.item():.4f}")
+
+    # For demo, break early
     if step > 2:
         break
 
