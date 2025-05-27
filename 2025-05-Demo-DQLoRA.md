@@ -83,41 +83,54 @@ print(f"FLEURS loaded successfully. Samples: {len(fleurs_loaded)}")
 # 3. Load Student Model (Wav2Vec2 + QLoRA)
 
 ```
-from transformers import Wav2Vec2Processor, Wav2Vec2ForCTC
-from peft import (
-    prepare_model_for_kbit_training,
-    get_peft_model,
-    LoraConfig,
-    TaskType
+for name, module in student_model.named_modules():
+    if "attention" in name:
+        print(name)
+```
+
+```
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor, BitsAndBytesConfig
+from peft import get_peft_model, LoraConfig
+import torch
+
+# QLoRA quantization config
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16
 )
 
-# Load pre-trained Wav2Vec2 model in 4-bit quantized format (QLoRA)
+# Load quantized model
 student_model = Wav2Vec2ForCTC.from_pretrained(
     "facebook/wav2vec2-base-960h",
-    load_in_4bit=True,
-    device_map="auto"
+    device_map="auto",
+    quantization_config=bnb_config
 )
 
-# Prepare model for QLoRA training (freeze base weights, enable adapter injection)
-student_model = prepare_model_for_kbit_training(student_model)
+# Build all attention projection modules for 12 layers
+target_modules = []
+for i in range(12):
+    for proj in ["q_proj", "k_proj", "v_proj", "out_proj"]:
+        target_modules.append(f"wav2vec2.encoder.layers.{i}.attention.{proj}")
 
-# Define QLoRA configuration for CTC-based ASR
-qlora_config = LoraConfig(
+# LoRA config
+lora_cfg = LoraConfig(
     r=8,
     lora_alpha=16,
-    target_modules=["encoder.layers.*.attention"],
     lora_dropout=0.1,
     bias="none",
-    task_type=TaskType.CTC  # Enables CTC-compatible adapter training
+    target_modules=target_modules
 )
 
-# Inject LoRA adapters into the quantized model
-student_model = get_peft_model(student_model, qlora_config)
-student_model.train()  # Set to training mode
+# Inject adapters
+student_model = get_peft_model(student_model, lora_cfg)
+student_model.train()
 
-# Load audio processor (for feature extraction + label alignment)
+# Load processor
 processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
 ```
+
 
 
 # 4. Load Teacher (Whisper Encoder)
