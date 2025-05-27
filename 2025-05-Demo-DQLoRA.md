@@ -3,8 +3,6 @@
 
 - With Python 3 + A100 GPU
 
-<br>
-
 # 1. Install Dependencies and Import Libraries
 
 ```bash
