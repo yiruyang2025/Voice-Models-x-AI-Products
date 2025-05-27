@@ -1,6 +1,8 @@
 
 # DQLoRA: Adapter-Guided Distillation for Lightweight ASR
 
+- On A100
+
 # 1. Install Dependencies and Import Libraries
 
 ```bash
