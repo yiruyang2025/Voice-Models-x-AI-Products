@@ -430,8 +430,8 @@ print(f"Memory Usage (MB): {mem_usage:.1f}")
 
 ```bib
 @article{yiruyang2025,
-  title={A Lightweight Domain-Aware Denoising ASR via Adapter-guided Distillation},
-  author={Yiru Yang, xxxx},
+  title={DQLoRA: A Lightweight Domain-Aware Denoising ASR via Adapter-guided Distillation},
+  author={Yiru Yang},
   journal={arXiv preprint arXiv:2505.xxxxx},
   year={2025}
 }
