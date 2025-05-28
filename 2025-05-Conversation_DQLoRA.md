@@ -31,11 +31,11 @@ from jiwer import wer
 3. Load Data
 
 ```
-# Load Chinese call-center datasets
-train_ds = load_dataset("MagicData/CallHome", split="train").cast_column("audio", Audio(16000))
-train_ds = train_ds.concatenate(load_dataset("aishell2", split="train").cast_column("audio", Audio(16000)))
-test_clean = load_dataset("MagicData/CallHome", split="test[:1%]").cast_column("audio", Audio(16000))
-test_noisy = test_clean  # we will add noise at eval
+train_ds = load_dataset("mozilla-foundation/common_voice_11_0", "zh-CN", split="train") \
+              .cast_column("audio", Audio(sampling_rate=16000))
+test_clean = load_dataset("mozilla-foundation/common_voice_11_0", "zh-CN", split="test") \
+                 .cast_column("audio", Audio(sampling_rate=16000))
+test_noisy = test_clean
 ```
 
 
