@@ -1,3 +1,8 @@
+
+Deployed on Google colab, A100 GPU
+
+<br>
+
 1. Install Dependencies
 
 ```
