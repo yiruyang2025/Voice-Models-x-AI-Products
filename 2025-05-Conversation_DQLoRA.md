@@ -31,11 +31,37 @@ from jiwer import wer
 3. Load Data
 
 ```
-train_ds = load_dataset("mozilla-foundation/common_voice_11_0", "zh-CN", split="train") \
-              .cast_column("audio", Audio(sampling_rate=16000))
-test_clean = load_dataset("mozilla-foundation/common_voice_11_0", "zh-CN", split="test") \
-                 .cast_column("audio", Audio(sampling_rate=16000))
+import os
+from datasets import load_dataset, Audio, DownloadConfig
+
+cache_dir = os.path.expanduser("~/.cache/huggingface/datasets")
+
+download_config = DownloadConfig(
+    cache_dir=cache_dir
+)
+
+train_ds = load_dataset(
+    "mozilla-foundation/common_voice_11_0",
+    "zh-CN",
+    split="train",
+    cache_dir=cache_dir,
+    download_config=download_config,
+    download_mode="reuse_cache_if_exists" 
+).cast_column("audio", Audio(sampling_rate=16000))
+
+test_clean = load_dataset(
+    "mozilla-foundation/common_voice_11_0",
+    "zh-CN",
+    split="test",
+    cache_dir=cache_dir,
+    download_config=download_config,
+    download_mode="reuse_cache_if_exists"
+).cast_column("audio", Audio(sampling_rate=16000))
+
 test_noisy = test_clean
+
+print(f"Train samples: {len(train_ds)}")
+print(f"Test samples:  {len(test_clean)}")
 ```
 
 
