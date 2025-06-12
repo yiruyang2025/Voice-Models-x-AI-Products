@@ -95,3 +95,12 @@ df = pd.DataFrame({
 })
 print(df)
 ```
+
+```
+@article{yiruyang2025,
+  title={Mamba For Veo 3},
+  author={Yiru Yang},
+  journal={arXiv preprint arXiv:2505.xxxxx},
+  year={2025}
+}
+```
