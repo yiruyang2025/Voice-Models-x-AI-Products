@@ -21,19 +21,16 @@ except ImportError:
 ```
 
 ```
-# Install Mamba-SSM (Lightweight Installation, Skip CUDA Deps)
+# Install Mamba-SSM (lightweight, skip CUDA deps)
 try:
     import mamba_ssm
     print("mamba_ssm is already installed.")
 except ImportError:
     print("Installing mamba_ssm without heavy CUDA dependencies...")
-    import subprocess
-    subprocess.run(["pip", "install", "ninja"], check=True)
-    subprocess.run([
-        "pip", "install",
-        "git+https://github.com/state-spaces/mamba.git#egg=mamba_ssm",
-        "--no-deps"
-    ], check=True)
+    # install the build tool once
+    !pip install -q ninja
+    # install Mamba-SSM without reloading CUDA wheels
+    !pip install -q git+https://github.com/state-spaces/mamba.git#egg=mamba_ssm --no-deps
 ```
 
 ```
