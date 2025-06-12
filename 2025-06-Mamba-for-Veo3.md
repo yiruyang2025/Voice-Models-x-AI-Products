@@ -10,58 +10,65 @@
 
 2. Define Mamba-1 lightweight memory module
 ```
-import torch.nn as nn
-from mamba_ssm import Mamba
-
-class MambaBlock(nn.Module):
-    def __init__(self, dim=512, d_state=1, expand=2):
-        super().__init__()
-        self.mamba = Mamba(d_model=dim, d_state=d_state, expand=expand)
-
-    def forward(self, x):
-        return self.mamba(x)
+# Install lightweight Mamba (pure Python variant)
+!pip install git+https://github.com/state-spaces/mamba.git
 ```
 
 3. Inject Mamba into Veo3-like U-Net model
 ```
-from model.unet import UNet3DConditionModel
+import torch
+import torch.nn as nn
+from mamba_ssm import Mamba
 
-def inject_mamba(model, dim=512):
-    mamba_layer = MambaBlock(dim)
-    for name, module in model.named_modules():
-        if 'cross_frame_attn' in name:
-            print(f"Replacing {name} with MambaBlock")
-            setattr(model, name, mamba_layer)
+# Create a simplified Mamba block wrapper
+class MambaInjectedBlock(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.mamba = Mamba(d_model=dim)
+
+    def forward(self, x):
+        return self.mamba(x)
+
+# Example: Replace a U-Net attention block with Mamba
+class ModifiedUNetBlock(nn.Module):
+    def __init__(self, in_dim):
+        super().__init__()
+        self.mamba = MambaInjectedBlock(in_dim)
+
+    def forward(self, x):
+        # Assumes input shape: [batch, sequence, features]
+        return self.mamba(x)
+
+# Sanity check
+x = torch.randn(2, 128, 64)  # e.g. batch=2, sequence_len=128, dim=64
+model = ModifiedUNetBlock(in_dim=64)
+out = model(x)
+print("Mamba output shape:", out.shape)
 ```
 
-4. Generate video from text
+4. Mock Mamba + Latent Video Consistency Experiment
 ```
-from inference.pipeline import text2video_infer
+# Simulate latent video features over frames
+latent_video = torch.randn(4, 16, 128)  # batch=4, 16 frames, 128-dim latent vector
 
-text_prompt = "A man wearing a red jacket walking through a snowy forest"
-video = text2video_infer(prompt=text_prompt)
-video.save("veo3_mamba1_output.mp4")
+# Apply Mamba temporal smoothing (mock)
+temporal_mamba = MambaInjectedBlock(dim=128)
+refined_video = temporal_mamba(latent_video)
+
+# Compare pre/post
+print("Before:", latent_video.mean().item(), "After:", refined_video.mean().item())
 ```
 
 5. Evaluate temporal face consistency
 ```
-from insightface.app import FaceAnalysis
-import numpy as np
 
-app = FaceAnalysis(name='buffalo_l')
-app.prepare(ctx_id=0)
-frames = extract_frames("veo3_mamba1_output.mp4")
-
-embs = [app.get(frame)[0].embedding for frame in frames if app.get(frame)]
-cos_sim = np.mean([np.dot(embs[i], embs[i+1]) for i in range(len(embs)-1)])
-
-print("Temporal Identity Consistency Score:", round(cos_sim, 4))
 ```
 
 
 6. Report result table
 ```
 ```
+
 
 
 ```
