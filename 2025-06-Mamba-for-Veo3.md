@@ -34,22 +34,20 @@ except ImportError:
 ```
 
 ```
+# Cell 2: Import or define Mamba, then other libs
+
 try:
     from mamba_ssm import Mamba
+    print("Using real mamba_ssm.Mamba")
 except ImportError:
+    print("mamba_ssm not found, using placeholder Mamba")
     class Mamba:
-        def __init__(self, *args, **kwargs):
-            pass
-        def __call__(self, x):
-            return x
-```
+        def __init__(self, *args, **kwargs): pass
+        def __call__(self, x): return x
 
-```
-# Cell 2: Imports
 import torch
 import torch.nn as nn
 import pandas as pd
-from mamba_ssm import Mamba
 ```
 
 ```
