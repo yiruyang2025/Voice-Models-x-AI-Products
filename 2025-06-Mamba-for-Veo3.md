@@ -34,6 +34,17 @@ except ImportError:
 ```
 
 ```
+try:
+    from mamba_ssm import Mamba
+except ImportError:
+    class Mamba:
+        def __init__(self, *args, **kwargs):
+            pass
+        def __call__(self, x):
+            return x
+```
+
+```
 # Cell 2: Imports
 import torch
 import torch.nn as nn
