@@ -21,15 +21,14 @@ except ImportError:
 ```
 
 ```
-# Install Mamba-SSM quickly (skip heavy CUDA deps)
+# Install Mamba-SSM (Lightweight Installation, Skip CUDA Deps)
 try:
     import mamba_ssm
-    print("mamba_ssm already installed.")
+    print("mamba_ssm is already installed.")
 except ImportError:
+    print("Installing mamba_ssm without heavy CUDA dependencies...")
     import subprocess
-    # ninja is required to build the SSM extension
     subprocess.run(["pip", "install", "ninja"], check=True)
-    # install mamba_ssm without pulling in all of torch's CUDA wheels
     subprocess.run([
         "pip", "install",
         "git+https://github.com/state-spaces/mamba.git#egg=mamba_ssm",
