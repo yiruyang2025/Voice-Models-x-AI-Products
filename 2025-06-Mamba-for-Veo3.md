@@ -18,7 +18,9 @@ try:
 except ImportError:
     print("Installing dependencies...")
     !pip install -r requirements.txt
+```
 
+```
 # Install Mamba if not already installed
 try:
     import mamba_ssm
