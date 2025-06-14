@@ -30,56 +30,70 @@ os.environ['TF_DETERMINISTIC_OPS'] = '1'
 
 
 ```
-# Cell 1: Download CC0 Cowbell Samples
-# (Assume these URLs point to CC0 audio files)
-urls = {
-    "Swiss":    "https://example.com/swiss_cowbell.wav",
-    "Urban":    "https://example.com/urban_cowbell.wav",
-    "Global":   "https://example.com/global_cowbell.wav"
-}
+# Cell 1: Download and Synthesize Cowbell Audio
+sr, duration, n_samples = 48000, 5.0, int(48000*5.0)
 out_dir = "cowbells"
 os.makedirs(out_dir, exist_ok=True)
 
-import requests
-
-for label, url in urls.items():
-    folder = os.path.join(out_dir, label)
-    os.makedirs(folder, exist_ok=True)
-    resp = requests.get(url)
-    path = os.path.join(folder, f"{label.lower()}.wav")
-    with open(path, "wb") as f:
-        f.write(resp.content)
-```
-
-
-```
-# Cell 2: Synthesize Augmented Cowbell Audio
-sr = 48000
-duration = 5.0
-n_samples = int(sr * duration)
-
-# frequency specs updated to match public CC0 descriptions
-class_specs = {
-    "Swiss":  ([(900,0.8),(1500,0.8)], 100),
-    "Urban":  ([(200,0.7),(600,0.7)], 100),
-    "Global": ([(100,0.6),(400,0.6)], 100)
+# CC0 download URLs (replace with real links)
+urls = {
+    "Swiss":  "https://example.com/swiss_cowbell.wav",
+    "Urban":  "https://example.com/urban_cowbell.wav",
+    "Global": "https://example.com/global_cowbell.wav"
 }
 
-def synthesize_and_save(label, specs, count):
-    folder = os.path.join(out_dir, label)
-    for i in range(count):
-        t = np.linspace(0, duration, n_samples, endpoint=False)
-        signal = sum(amp * np.sin(2*np.pi*freq*t) for freq, amp in specs)
-        signal *= np.hanning(n_samples)
-        noise = np.random.randn(n_samples)
-        snr = np.random.uniform(10,30)
-        noise *= np.std(signal)*(10**(-snr/20))
-        # Explicitly save as float32
-        sf.write(os.path.join(folder, f"{label.lower()}_syn_{i}.wav"),
-                 (signal+noise).astype(np.float32), sr)
+for label, url in urls.items():
+    folder = os.path.join(out_dir,label); os.makedirs(folder,exist_ok=True)
+    r = requests.get(url); open(os.path.join(folder,f"{label}.wav"),"wb").write(r.content)
 
-for lbl, (specs, cnt) in class_specs.items():
-    synthesize_and_save(lbl, specs, cnt)
+class_specs = {
+    "Swiss":  ([(900,0.8),(1500,0.8)], 150),
+    "Urban":  ([(200,0.7),(600,0.7)], 150),
+    "Global": ([(100,0.6),(400,0.6)], 150)
+}
+
+def synth(label,specs,count):
+    folder=os.path.join(out_dir,label)
+    for i in range(count):
+        t=np.linspace(0,duration,n_samples,endpoint=False)
+        sig=sum(a*np.sin(2*np.pi*f*t) for f,a in specs)
+        sig*=np.hanning(n_samples)
+        noise=np.random.randn(n_samples)*np.std(sig)*(10**(-np.random.uniform(10,30)/20))
+        sf.write(os.path.join(folder,f"{label}_syn_{i}.wav"),(sig+noise).astype(np.float32),sr)
+
+for lbl,(specs,cnt) in class_specs.items():
+    synth(lbl,specs,cnt)
+```
+
+
+```
+# Cell 2: Load, Pad, Log-Mel + SpecAugment
+def load_pad(path):
+    y,_=librosa.load(path,sr=sr,mono=True)
+    return y if len(y)>=n_samples else np.pad(y,(0,n_samples-len(y)))
+
+def log_mel(y):
+    S=librosa.feature.melspectrogram(y=y,sr=sr,n_fft=2048,hop_length=512,n_mels=64)
+    return librosa.power_to_db(S,ref=np.max)
+
+def spec_aug(mel,F=8,T=15,n=2):
+    m=mel.copy(); M,L=m.shape
+    for _ in range(n):
+        f0=np.random.randint(0,M-F); t0=np.random.randint(0,L-T)
+        m[f0:f0+F,:]=0; m[:,t0:t0+T]=0
+    return m
+
+X,y=[],[]
+labels=sorted(os.listdir(out_dir))
+for idx,label in enumerate(labels):
+    for fn in glob(os.path.join(out_dir,label,"*.wav")):
+        y_wave=load_pad(fn); mel=log_mel(y_wave)
+        if random.random()<0.6:
+            mel=spec_aug(mel)
+        X.append(mel[...,None]); y.append(idx)
+
+X=np.stack(X); y=np.array(y)
+print("Total samples:", X.shape[0])
 ```
 
 
