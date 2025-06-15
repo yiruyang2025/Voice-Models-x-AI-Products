@@ -1,11 +1,9 @@
+# DQLoRA: A Lightweight Denoising ASR Distillation
+<br>
 
-# DQLoRA: Adapter-Guided Distillation for Lightweight ASR
-
-- With Python 3 + A100 GPU, deployed on Colab
-
+```
 # 1. Install Dependencies and Import Libraries
 
-```bash
 !pip install -q transformers datasets torchaudio peft accelerate bitsandbytes
 import torch
 import torchaudio
@@ -33,9 +31,9 @@ from tqdm import tqdm
 ```
 
 
+```
 # 2. Load FLEURS (Clean) + DNS (Noise)
 
-```
 !pip install -U datasets
 !pip install fsspec==2023.9.2
 
@@ -43,10 +41,7 @@ from datasets import load_dataset
 fleurs = load_dataset("google/fleurs", name="en_us", split="train", streaming=True)
 
 !rm -rf ~/.cache/huggingface/datasets
-```
-<br>
 
-```
 import os
 import shutil
 from datasets import load_dataset, load_from_disk, Audio
@@ -88,9 +83,9 @@ print(f"FLEURS loaded successfully. Samples: {len(fleurs_loaded)}")
 ```
 
 
+```
 # 3. Load Student Model (Wav2Vec2 + QLoRA)
 
-```
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor, BitsAndBytesConfig
 from peft import get_peft_model, LoraConfig
 import torch
@@ -134,10 +129,9 @@ processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
 ```
 
 
-
+```
 # 4. Load Teacher (Whisper Encoder)
 
-```
 from transformers import WhisperModel, WhisperProcessor
 
 # Load Whisper encoder as teacher (frozen)
@@ -146,9 +140,9 @@ teacher_processor = WhisperProcessor.from_pretrained("openai/whisper-small")
 ```
 
 
+```
 # 5. Data Preprocessing: Clean + Noisy + Labels
 
-```
 import numpy as np
 from torch.utils.data import DataLoader
 
@@ -193,9 +187,9 @@ dataloader = DataLoader(
 ```
 
 
+```
 # 6. Training Loop (Distillation + CTC)
 
-```
 from transformers import Wav2Vec2Processor, Wav2Vec2ForCTC, WhisperProcessor, WhisperModel
 
 processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
@@ -203,16 +197,12 @@ student_model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h").to
 
 teacher_processor = WhisperProcessor.from_pretrained("openai/whisper-base")
 teacher_model = WhisperModel.from_pretrained("openai/whisper-base").to("cuda").eval()
-```
 
-```
 print(f"[Step {step}] input_len={input_lengths.item()}, target_len={target_lengths.item()}, logits_T={student_logits.shape[1]}")
 
 print("Labels:", labels)
 print("Max Label Value:", labels.max().item(), "Pad ID:", processor.tokenizer.pad_token_id)
-```
 
-```
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
@@ -332,16 +322,15 @@ for step, batch in enumerate(tqdm(dataloader)):
 print("QLoRA + Whisper Distillation (CTC + KL) training complete.")
 ```
 
-# 7. Evaluation
 
 ```
+# 7. Evaluation
+
 from transformers import Wav2Vec2Processor, Wav2Vec2ForCTC
 
 processor = Wav2Vec2Processor.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-english")
 student_model = Wav2Vec2ForCTC.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-english").to("cuda")
-```
 
-```
 import torch
 import torchaudio
 import time
@@ -423,18 +412,16 @@ print(f"Memory Usage (MB): {mem_usage:.1f}")
 ```
 
 
-<br><br>
 
 
-## Citation
-
-```bib
-@article{yiruyang2025,
-  title={DQLoRA: A Lightweight Domain-Aware Denoising ASR via Adapter-guided Distillation},
-  author={Yiru Yang},
-  journal={arXiv preprint arXiv:2505.xxxxx},
-  year={2025}
-}
+```
+=== Evaluation Results for DQLoRA ===
+WER (Clean): 15.45%
+WER (Noisy): 83.74%
+RTF: 0.005
+Memory Usage (MB): 3875.8
 ```
 
-<br><br><br><br>
+
+
+
